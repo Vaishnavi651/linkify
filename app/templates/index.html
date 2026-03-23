@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linkify - Shorten Your URLs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon">🔗</span>
+                <span class="logo-text">Linkify</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link active">Home</a>
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-container">
+            <h1 class="hero-title">
+                Shorten Your<br>
+                <span class="gradient-text">Long URLs Instantly</span>
+            </h1>
+            <p class="hero-description">
+                Create short, memorable links that you can share anywhere. 
+                Track clicks, analyze traffic, and optimize your content.
+            </p>
+        </div>
+    </section>
+
+    <section class="shortener-section">
+        <div class="shortener-card">
+            <div class="card-header">
+                <h2>Paste your long URL here</h2>
+                <p>Get a short link in seconds</p>
+            </div>
+            
+            <div class="url-input-group">
+                <input 
+                    type="url" 
+                    id="longUrl" 
+                    placeholder="https://example.com/very/long/url/that/you/want/to/shorten"
+                    class="url-input"
+                >
+                <button id="shortenBtn" class="shorten-btn">
+                    <span class="btn-text">Shorten URL</span>
+                    <span class="btn-icon">⚡</span>
+                </button>
+            </div>
+
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <span>Creating your short link...</span>
+            </div>
+
+            <div id="result" class="result-section" style="display: none;">
+                <div class="result-card">
+                    <div class="result-header">
+                        <span class="success-icon">✅</span>
+                        <h3>Your short URL is ready!</h3>
+                    </div>
+                    <div class="short-url-container">
+                        <input type="text" id="shortUrl" class="short-url-input" readonly>
+                        <button id="copyBtn" class="copy-btn">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div class="stats-preview">
+                        <div class="stat">
+                            <span class="stat-label">Created:</span>
+                            <span id="createdAt" class="stat-value">Just now</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Clicks:</span>
+                            <span id="clickCount" class="stat-value">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error" class="error-section" style="display: none;">
+                <div class="error-card">
+                    <span class="error-icon">⚠️</span>
+                    <p id="errorMessage" class="error-message"></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="features-container">
+            <h2 class="features-title">Why Choose Linkify?</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h3>Lightning Fast</h3>
+                    <p>Instant redirects with sub-50ms latency</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Analytics</h3>
+                    <p>Track clicks and see who's clicking your links</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Secure & Safe</h3>
+                    <p>All links are secure and spam-protected</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">✨</div>
+                    <h3>Custom Links</h3>
+                    <p>Create memorable custom short URLs</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
