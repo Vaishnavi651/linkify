@@ -4,10 +4,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
+    # MongoDB connection
     MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     DATABASE_NAME = "url_shortener"
-    APP_NAME = "URL Shortener"
+    
+    # App settings
+    APP_NAME = "Linkify"
     APP_VERSION = "1.0.0"
-    BASE_URL = "http://localhost:8000"
+    
+    # Base URL - uses environment variable or localhost
+    BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
 settings = Settings()
