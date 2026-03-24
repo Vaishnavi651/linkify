@@ -28,6 +28,11 @@ async def home(request: Request):
     """Serve the homepage"""
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for uptime monitoring"""
+    return {"status": "alive", "service": "Linkify"}
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Dashboard page - shows all URLs"""
