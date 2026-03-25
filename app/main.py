@@ -25,15 +25,12 @@ async def startup_event():
 async def shutdown_event():
     await close_mongo_connection()
 
+# ============ MAIN PAGES ============
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Serve the homepage"""
     return templates.TemplateResponse("index.html", {"request": request})
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for uptime monitoring"""
-    return {"status": "alive", "service": "Linkify"}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -44,22 +41,44 @@ async def dashboard(request: Request):
     
     urls_html = ""
     for url in urls:
-        # Add QR code link
         qr_link = f"/qr/{url['short_code']}"
+        delete_link = f"javascript:deleteURL('{url['short_code']}')"
+        
+        # Show expiration info if exists
+        expires_info = ""
+        expires_class = ""
+        if url.get('expires_at'):
+            expires_date = url['expires_at'].strftime('%Y-%m-%d')
+            expires_info = f"📅 Expires: {expires_date}"
+            expires_class = "has-expiry"
+        
+        # Show password info if exists
+        password_info = ""
+        password_class = ""
+        if url.get('is_password_protected'):
+            password_info = "🔒 Password Protected"
+            password_class = "has-password"
         
         urls_html += f"""
-        <div class="url-row">
+        <div class="url-row" id="row-{url['short_code']}">
             <div class="short-url-col">
                 <a href="/{url['short_code']}" target="_blank" class="short-url-link">
                     {settings.BASE_URL}/{url['short_code']}
                 </a>
-                <a href="{qr_link}" target="_blank" class="qr-icon" style="margin-left: 10px; text-decoration: none;">📱</a>
+                <div class="url-actions">
+                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn" title="Generate QR Code">📱</a>
+                    <button onclick="{delete_link}" class="action-btn delete-btn" title="Delete URL">🗑️</button>
+                </div>
             </div>
             <div class="long-url" title="{url['long_url']}">
-                {url['long_url'][:50]}{'...' if len(url['long_url']) > 50 else ''}
+                {url['long_url'][:60]}{'...' if len(url['long_url']) > 60 else ''}
             </div>
-            <div class="clicks-count">{url.get('clicks', 0)}</div>
-            <div class="created-date">{url['created_at'].strftime('%Y-%m-%d %H:%M')}</div>
+            <div class="url-info">
+                <span class="clicks-count">👁️ {url.get('clicks', 0)} clicks</span>
+                {f'<span class="expiry-badge {expires_class}">{expires_info}</span>' if expires_info else ''}
+                {f'<span class="password-badge {password_class}">{password_info}</span>' if password_info else ''}
+            </div>
+            <div class="created-date">📅 {url['created_at'].strftime('%Y-%m-%d %H:%M')}</div>
         </div>
         """
     
@@ -69,7 +88,7 @@ async def dashboard(request: Request):
             <div class="empty-state-icon">🔗</div>
             <h3>No URLs yet</h3>
             <p>Create your first short URL on the homepage!</p>
-            <a href="/" style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px;">Go to Homepage</a>
+            <a href="/" class="btn-primary">Go to Homepage</a>
         </div>
         """
     
@@ -93,6 +112,16 @@ async def dashboard(request: Request):
                 <div class="nav-links">
                     <a href="/" class="nav-link">Home</a>
                     <a href="/dashboard" class="nav-link active">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code">✨ Custom Short Codes</a>
+                            <a href="/qr-code">📱 QR Code Generator</a>
+                            <a href="/expiration">⏰ URL Expiration</a>
+                            <a href="/password">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link">About</a>
                 </div>
             </div>
         </nav>
@@ -101,13 +130,18 @@ async def dashboard(request: Request):
             <div class="dashboard-header">
                 <h1>📊 Your URLs</h1>
                 <p>Track and manage all your shortened links</p>
+                <div class="legend">
+                    <span class="legend-item">🔒 = Password protected</span>
+                    <span class="legend-item">📅 = Has expiration date</span>
+                    <span class="legend-item">👁️ = Total clicks</span>
+                </div>
             </div>
 
             <div class="urls-table">
                 <div class="table-header">
                     <div>Short URL</div>
                     <div>Original URL</div>
-                    <div>Clicks</div>
+                    <div>Info</div>
                     <div>Created</div>
                 </div>
                 {urls_html}
@@ -119,9 +153,462 @@ async def dashboard(request: Request):
                 <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
             </div>
         </footer>
+
+        <script>
+        async function deleteURL(shortCode) {{
+            if (confirm('Are you sure you want to delete this URL? This action cannot be undone.')) {{
+                try {{
+                    const response = await fetch(`/delete/${{shortCode}}`, {{
+                        method: 'DELETE'
+                    }});
+                    
+                    if (response.ok) {{
+                        document.getElementById(`row-${{shortCode}}`).remove();
+                        alert('✅ URL deleted successfully!');
+                        if (document.querySelectorAll('.url-row').length === 0) {{
+                            location.reload();
+                        }}
+                    }} else {{
+                        const data = await response.json();
+                        alert(data.detail || 'Failed to delete URL');
+                    }}
+                }} catch (error) {{
+                    alert('Error deleting URL');
+                }}
+            }}
+        }}
+        </script>
     </body>
     </html>
     """)
+
+# ============ FEATURE PAGES ============
+
+@app.get("/custom-code", response_class=HTMLResponse)
+async def custom_code_page(request: Request):
+    """Custom short codes feature page"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Custom Short Codes - Linkify</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">Linkify</span>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn active">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code" class="active">✨ Custom Short Codes</a>
+                            <a href="/qr-code">📱 QR Code Generator</a>
+                            <a href="/expiration">⏰ URL Expiration</a>
+                            <a href="/password">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link">About</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="feature-page">
+            <div class="feature-header">
+                <h1>✨ Custom Short Codes</h1>
+                <p>Create memorable, branded links that are easy to share</p>
+            </div>
+
+            <div class="feature-content">
+                <div class="feature-card-large">
+                    <h2>How it works</h2>
+                    <p>Instead of random codes like <code>aB3xK9</code>, you can create custom short codes like:</p>
+                    <div class="example-list">
+                        <div class="example-item">
+                            <span class="example-icon">🎯</span>
+                            <code>linkify.onrender.com/mywebsite</code>
+                        </div>
+                        <div class="example-item">
+                            <span class="example-icon">📱</span>
+                            <code>linkify.onrender.com/instagram</code>
+                        </div>
+                        <div class="example-item">
+                            <span class="example-icon">🛍️</span>
+                            <code>linkify.onrender.com/sale2026</code>
+                        </div>
+                    </div>
+                    <div class="feature-tip">
+                        <strong>💡 Tip:</strong> Use letters, numbers, and hyphens only. Keep it short and memorable!
+                    </div>
+                    <a href="/" class="btn-primary">Try it now →</a>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+            </div>
+        </footer>
+    </body>
+    </html>
+    """)
+
+@app.get("/qr-code", response_class=HTMLResponse)
+async def qr_code_page(request: Request):
+    """QR Code feature page"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>QR Code Generator - Linkify</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">Linkify</span>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn active">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code">✨ Custom Short Codes</a>
+                            <a href="/qr-code" class="active">📱 QR Code Generator</a>
+                            <a href="/expiration">⏰ URL Expiration</a>
+                            <a href="/password">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link">About</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="feature-page">
+            <div class="feature-header">
+                <h1>📱 QR Code Generator</h1>
+                <p>Generate QR codes for any short URL - perfect for business cards, posters, and more!</p>
+            </div>
+
+            <div class="feature-content">
+                <div class="feature-card-large">
+                    <h2>How it works</h2>
+                    <p>Every short URL you create automatically has a QR code. Just look for the 📱 icon in your dashboard!</p>
+                    
+                    <div class="qr-example">
+                        <div class="qr-preview">
+                            <div class="qr-placeholder">
+                                <span>📱</span>
+                                <p>Your QR code appears here</p>
+                            </div>
+                        </div>
+                        <div class="qr-info">
+                            <h3>Perfect for:</h3>
+                            <ul>
+                                <li>📇 Business cards</li>
+                                <li>🖼️ Posters and flyers</li>
+                                <li>📦 Product packaging</li>
+                                <li>🎫 Event tickets</li>
+                                <li>📱 Social media profiles</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-tip">
+                        <strong>💡 Tip:</strong> Scan QR codes with your phone camera - no app needed!
+                    </div>
+                    <a href="/dashboard" class="btn-primary">View Dashboard →</a>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+            </div>
+        </footer>
+    </body>
+    </html>
+    """)
+
+@app.get("/expiration", response_class=HTMLResponse)
+async def expiration_page(request: Request):
+    """URL Expiration feature page"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>URL Expiration - Linkify</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">Linkify</span>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn active">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code">✨ Custom Short Codes</a>
+                            <a href="/qr-code">📱 QR Code Generator</a>
+                            <a href="/expiration" class="active">⏰ URL Expiration</a>
+                            <a href="/password">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link">About</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="feature-page">
+            <div class="feature-header">
+                <h1>⏰ URL Expiration</h1>
+                <p>Set links to automatically expire after a specific time</p>
+            </div>
+
+            <div class="feature-content">
+                <div class="feature-card-large">
+                    <h2>Perfect for:</h2>
+                    <div class="use-cases-grid">
+                        <div class="use-case">
+                            <div class="use-icon">🎉</div>
+                            <h3>Limited Offers</h3>
+                            <p>Promotions that end on a specific date</p>
+                        </div>
+                        <div class="use-case">
+                            <div class="use-icon">📧</div>
+                            <h3>Email Campaigns</h3>
+                            <p>Time-sensitive newsletters and updates</p>
+                        </div>
+                        <div class="use-case">
+                            <div class="use-icon">🎟️</div>
+                            <h3>Event Invitations</h3>
+                            <p>Links that stop working after the event</p>
+                        </div>
+                        <div class="use-case">
+                            <div class="use-icon">🔒</div>
+                            <h3>Temporary Access</h3>
+                            <p>Share sensitive links for a limited time</p>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-tip">
+                        <strong>💡 How to use:</strong> Simply enter the number of days in the "Expires in days" field when creating your short URL.
+                    </div>
+                    <a href="/" class="btn-primary">Create expiring link →</a>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+            </div>
+        </footer>
+    </body>
+    </html>
+    """)
+
+@app.get("/password", response_class=HTMLResponse)
+async def password_page(request: Request):
+    """Password Protection feature page"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Protection - Linkify</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">Linkify</span>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn active">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code">✨ Custom Short Codes</a>
+                            <a href="/qr-code">📱 QR Code Generator</a>
+                            <a href="/expiration">⏰ URL Expiration</a>
+                            <a href="/password" class="active">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link">About</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="feature-page">
+            <div class="feature-header">
+                <h1>🔒 Password Protection</h1>
+                <p>Keep your links secure with password protection</p>
+            </div>
+
+            <div class="feature-content">
+                <div class="feature-card-large">
+                    <h2>How it works</h2>
+                    <p>When you create a short URL with a password, anyone who clicks it will need to enter the correct password before being redirected.</p>
+                    
+                    <div class="demo-box">
+                        <h3>Example:</h3>
+                        <div class="demo-step">
+                            <span class="step-number">1</span>
+                            <span>Create URL with password: <code>mysecret123</code></span>
+                        </div>
+                        <div class="demo-step">
+                            <span class="step-number">2</span>
+                            <span>Share the link: <code>linkify.onrender.com/private-link</code></span>
+                        </div>
+                        <div class="demo-step">
+                            <span class="step-number">3</span>
+                            <span>Recipient sees a password prompt 🔒</span>
+                        </div>
+                        <div class="demo-step">
+                            <span class="step-number">4</span>
+                            <span>Enter password → Redirected! ✅</span>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-tip">
+                        <strong>💡 Security Tip:</strong> Use strong passwords with a mix of letters, numbers, and special characters.
+                    </div>
+                    <a href="/" class="btn-primary">Create password-protected link →</a>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+            </div>
+        </footer>
+    </body>
+    </html>
+    """)
+
+@app.get("/about", response_class=HTMLResponse)
+async def about_page(request: Request):
+    """About page"""
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>About - Linkify</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/static/css/style.css">
+    </head>
+    <body>
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <span class="logo-text">Linkify</span>
+                </div>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Home</a>
+                    <a href="/dashboard" class="nav-link">Dashboard</a>
+                    <div class="dropdown">
+                        <button class="dropbtn">Features ▼</button>
+                        <div class="dropdown-content">
+                            <a href="/custom-code">✨ Custom Short Codes</a>
+                            <a href="/qr-code">📱 QR Code Generator</a>
+                            <a href="/expiration">⏰ URL Expiration</a>
+                            <a href="/password">🔒 Password Protection</a>
+                        </div>
+                    </div>
+                    <a href="/about" class="nav-link active">About</a>
+                </div>
+            </div>
+        </nav>
+
+        <div class="about-page">
+            <div class="about-header">
+                <h1>About Linkify</h1>
+                <p>Professional URL Shortener Service</p>
+            </div>
+
+            <div class="about-content">
+                <div class="about-card">
+                    <h2>🚀 What is Linkify?</h2>
+                    <p>Linkify is a professional URL shortener that helps you create short, memorable links that you can share anywhere. Track clicks, analyze traffic, and optimize your content with our powerful features.</p>
+                </div>
+
+                <div class="about-card">
+                    <h2>✨ Features</h2>
+                    <ul class="feature-list">
+                        <li>🔗 <strong>Custom Short Codes</strong> - Create branded, memorable links</li>
+                        <li>📱 <strong>QR Code Generation</strong> - Generate QR codes for any short URL</li>
+                        <li>⏰ <strong>URL Expiration</strong> - Links that auto-expire after a set time</li>
+                        <li>🔒 <strong>Password Protection</strong> - Keep sensitive links secure</li>
+                        <li>📊 <strong>Analytics Dashboard</strong> - Track clicks and performance</li>
+                        <li>⚡ <strong>Lightning Fast</strong> - Sub-50ms redirect latency</li>
+                    </ul>
+                </div>
+
+                <div class="about-card">
+                    <h2>🛠️ Built With</h2>
+                    <div class="tech-stack">
+                        <span class="tech-badge">FastAPI</span>
+                        <span class="tech-badge">MongoDB</span>
+                        <span class="tech-badge">Python</span>
+                        <span class="tech-badge">HTML5/CSS3</span>
+                        <span class="tech-badge">JavaScript</span>
+                        <span class="tech-badge">Render</span>
+                    </div>
+                </div>
+
+                <div class="about-card">
+                    <h2>📧 Contact</h2>
+                    <p>Have questions or feedback? Reach out!</p>
+                    <p>Email: <a href="mailto:vaishnavi@linkify.com">vaishnavi@linkify.com</a></p>
+                    <p>GitHub: <a href="https://github.com/Vaishnavi651/linkify" target="_blank">github.com/Vaishnavi651/linkify</a></p>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-container">
+                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+            </div>
+        </footer>
+    </body>
+    </html>
+    """)
+
+# ============ API ENDPOINTS ============
 
 @app.post("/shorten")
 async def create_short_url(url_data: schemas.URLCreate):
@@ -219,23 +706,61 @@ async def get_qr_code(short_code: str):
                 color: #00d2ff;
                 margin: 10px 0;
             }}
+            .button-group {{
+                margin-top: 20px;
+            }}
+            .download-btn {{
+                background: #10b981;
+                margin-left: 10px;
+            }}
         </style>
     </head>
     <body>
         <h1>📱 QR Code for your link</h1>
         <div class="qr-container">
-            <img src="data:image/png;base64,{qr_img}" alt="QR Code">
+            <img src="data:image/png;base64,{qr_img}" alt="QR Code" id="qr-image">
         </div>
         <div class="info">
             <p class="short-url">🔗 {short_url}</p>
             <p>Scan this QR code to visit the link instantly!</p>
+            <div class="button-group">
+                <a href="/dashboard">← Back to Dashboard</a>
+                <a href="/" class="download-btn">Home</a>
+            </div>
         </div>
-        <a href="/dashboard">← Back to Dashboard</a>
-        <br><br>
-        <a href="/">Home</a>
+        <script>
+            // Add download functionality
+            const qrImage = document.getElementById('qr-image');
+            const downloadBtn = document.createElement('a');
+            downloadBtn.href = qrImage.src;
+            downloadBtn.download = 'qrcode.png';
+            downloadBtn.textContent = '📥 Download QR Code';
+            downloadBtn.className = 'download-btn';
+            downloadBtn.style.marginLeft = '10px';
+            document.querySelector('.button-group').appendChild(downloadBtn);
+        </script>
     </body>
     </html>
     """)
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for uptime monitoring"""
+    return {"status": "alive", "service": "Linkify"}
+
+@app.delete("/delete/{short_code}")
+async def delete_url(short_code: str):
+    """Delete a short URL"""
+    db = get_db()
+    
+    result = await db.urls.delete_one({"short_code": short_code})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="URL not found")
+    
+    await db.click_events.delete_many({"short_code": short_code})
+    
+    return {"message": f"URL {short_code} deleted successfully"}
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
@@ -253,7 +778,6 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
     
     # Check password protection
     if url_data.get("password"):
-        # If no password provided, show password form
         if not password:
             return HTMLResponse(f"""
             <!DOCTYPE html>
@@ -277,6 +801,7 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
                         box-shadow: 0 10px 25px rgba(0,0,0,0.3);
                         text-align: center;
                         border: 1px solid #2a2a2a;
+                        max-width: 400px;
                     }}
                     h2 {{
                         color: white;
@@ -288,12 +813,14 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
                     }}
                     input {{
                         padding: 12px;
-                        width: 250px;
+                        width: 100%;
                         margin: 10px 0;
                         border: 1px solid #2a2a2a;
                         border-radius: 5px;
                         background: #1a1a1a;
                         color: white;
+                        font-size: 16px;
+                        box-sizing: border-box;
                     }}
                     button {{
                         padding: 12px 24px;
@@ -303,9 +830,17 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
                         border-radius: 5px;
                         cursor: pointer;
                         font-weight: 600;
+                        width: 100%;
+                        font-size: 16px;
                     }}
                     button:hover {{
                         transform: translateY(-2px);
+                    }}
+                    .back-link {{
+                        margin-top: 1rem;
+                        display: block;
+                        color: #666;
+                        font-size: 14px;
                     }}
                 </style>
             </head>
@@ -315,15 +850,14 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
                     <p>This link requires a password to access</p>
                     <form method="get">
                         <input type="password" name="password" placeholder="Enter password" autofocus>
-                        <br>
                         <button type="submit">Unlock Link</button>
                     </form>
+                    <a href="/" class="back-link">← Back to Home</a>
                 </div>
             </body>
             </html>
             """)
         
-        # Check password
         if password != url_data["password"]:
             raise HTTPException(status_code=401, detail="Incorrect password")
     
