@@ -1,5 +1,8 @@
 document.addEventListener('DOMContentLoaded', function() {
     const longUrlInput = document.getElementById('longUrl');
+    const customCodeInput = document.getElementById('customCode');
+    const expiresDaysInput = document.getElementById('expiresDays');
+    const passwordInput = document.getElementById('password');
     const shortenBtn = document.getElementById('shortenBtn');
     const loadingDiv = document.getElementById('loading');
     const resultDiv = document.getElementById('result');
@@ -9,6 +12,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const createdAtSpan = document.getElementById('createdAt');
     const clickCountSpan = document.getElementById('clickCount');
     const errorMessageSpan = document.getElementById('errorMessage');
+    const qrLink = document.getElementById('qrLink');
+    let currentShortCode = '';
 
     shortenBtn.addEventListener('click', async function() {
         const longUrl = longUrlInput.value.trim();
@@ -30,25 +35,42 @@ document.addEventListener('DOMContentLoaded', function() {
         loadingDiv.style.display = 'flex';
         shortenBtn.disabled = true;
         
+        const requestBody = {
+            long_url: longUrl
+        };
+        
+        if (customCodeInput.value.trim()) {
+            requestBody.custom_code = customCodeInput.value.trim();
+        }
+        if (expiresDaysInput.value) {
+            requestBody.expires_days = parseInt(expiresDaysInput.value);
+        }
+        if (passwordInput.value) {
+            requestBody.password = passwordInput.value;
+        }
+        
         try {
             const response = await fetch('/shorten', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    long_url: longUrl
-                })
+                body: JSON.stringify(requestBody)
             });
             
             const data = await response.json();
             
             if (response.ok) {
+                currentShortCode = data.short_code;
                 shortUrlInput.value = data.short_url;
                 createdAtSpan.textContent = new Date(data.created_at).toLocaleString();
                 clickCountSpan.textContent = data.clicks;
+                qrLink.href = `/qr/${currentShortCode}`;
                 resultDiv.style.display = 'block';
                 longUrlInput.value = '';
+                customCodeInput.value = '';
+                expiresDaysInput.value = '';
+                passwordInput.value = '';
             } else {
                 showError(data.detail || 'Something went wrong');
             }

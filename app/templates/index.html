@@ -54,6 +54,33 @@
                 </button>
             </div>
 
+            <!-- New Optional Fields -->
+            <div class="optional-fields" style="margin-top: 1rem;">
+                <input 
+                    type="text" 
+                    id="customCode" 
+                    placeholder="Custom short code (optional) - e.g., mylink"
+                    class="url-input"
+                    style="margin-bottom: 0.5rem;"
+                >
+                <div style="display: flex; gap: 1rem;">
+                    <input 
+                        type="number" 
+                        id="expiresDays" 
+                        placeholder="Expires in days (optional)"
+                        class="url-input"
+                        style="flex: 1;"
+                    >
+                    <input 
+                        type="password" 
+                        id="password" 
+                        placeholder="Password protect (optional)"
+                        class="url-input"
+                        style="flex: 1;"
+                    >
+                </div>
+            </div>
+
             <div id="loading" class="loading" style="display: none;">
                 <div class="spinner"></div>
                 <span>Creating your short link...</span>
@@ -80,6 +107,9 @@
                             <span class="stat-label">Clicks:</span>
                             <span id="clickCount" class="stat-value">0</span>
                         </div>
+                    </div>
+                    <div id="qrInfo" style="margin-top: 1rem; text-align: center;">
+                        <a id="qrLink" href="#" target="_blank" style="color: #00d2ff; text-decoration: none;">📱 Generate QR Code</a>
                     </div>
                 </div>
             </div>
