@@ -1,14 +1,16 @@
-from pydantic import BaseModel, HttpUrl, EmailStr
+from pydantic import BaseModel, HttpUrl
 from datetime import datetime
 from typing import Optional
 
 class URLCreate(BaseModel):
+    """Schema for creating a new short URL"""
     long_url: HttpUrl
     custom_code: Optional[str] = None
     expires_days: Optional[int] = None
     password: Optional[str] = None
 
 class URLResponse(BaseModel):
+    """Schema for returning URL data"""
     short_code: str
     short_url: str
     long_url: str
@@ -19,16 +21,3 @@ class URLResponse(BaseModel):
     
     class Config:
         from_attributes = True
-
-# User schemas
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserResponse(BaseModel):
-    email: str
-    created_at: datetime
