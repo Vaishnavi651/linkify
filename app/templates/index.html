@@ -128,11 +128,12 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({email, password})
                 });
+                const data = await response.json();
                 
                 if (response.ok) {
+                    localStorage.setItem('token', data.token);
                     window.location.href = '/dashboard';
                 } else {
-                    const data = await response.json();
                     errorDiv.textContent = data.detail || 'Invalid email or password';
                     errorDiv.style.display = 'block';
                 }
@@ -169,7 +170,7 @@
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    successDiv.textContent = 'Account created! Please login.';
+                    successDiv.textContent = 'Account created successfully! Please login.';
                     successDiv.style.display = 'block';
                     document.getElementById('signupEmail').value = '';
                     document.getElementById('signupPassword').value = '';

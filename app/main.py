@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Response, Cookie
+from fastapi import FastAPI, Request, HTTPException, Response, Cookie, Header
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -30,7 +30,7 @@ async def shutdown_event():
 
 # ============ AUTH FUNCTIONS ============
 
-async def get_current_user(token: str = Cookie(None)):
+async def get_current_user_from_token(token: str):
     """Get current user from session token"""
     if not token:
         return None
@@ -51,37 +51,37 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, token: str = Cookie(None)):
-    """Dashboard page - shows user's URLs with URL shortener"""
+async def dashboard(request: Request, token: str = None):
+    """Dashboard page - shows user's URLs"""
     db = get_db()
     
-    # Get current user
-    user = await get_current_user(token)
+    # Get token from query parameter or header
+    if not token:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
     
-    # If not logged in, redirect to home
+    user = await get_current_user_from_token(token)
+    
     if not user:
-        return RedirectResponse(url="/", status_code=303)
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Not Authorized</title>
+            <script>
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            </script>
+        </head>
+        <body>Redirecting...</body>
+        </html>
+        """, status_code=401)
     
     user_id = str(user["_id"])
-    
-    # Get user's URLs only
     urls = await db.urls.find({"user_id": user_id}).sort("created_at", -1).to_list(length=100)
     
     urls_html = ""
     for url in urls:
         qr_link = f"/qr/{url['short_code']}"
-        delete_link = f"javascript:deleteURL('{url['short_code']}')"
-        
-        # Show expiration info if exists
-        expires_info = ""
-        if url.get('expires_at'):
-            expires_date = url['expires_at'].strftime('%Y-%m-%d')
-            expires_info = f"📅 Expires: {expires_date}"
-        
-        # Show password info if exists
-        password_info = ""
-        if url.get('is_password_protected'):
-            password_info = "🔒 Password Protected"
         
         urls_html += f"""
         <div class="url-row" id="row-{url['short_code']}">
@@ -90,30 +90,18 @@ async def dashboard(request: Request, token: str = Cookie(None)):
                     {settings.BASE_URL}/{url['short_code']}
                 </a>
                 <div class="url-actions">
-                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn" title="Generate QR Code">📱 QR Code</a>
-                    <button onclick="{delete_link}" class="action-btn delete-btn" title="Delete URL">🗑️ Delete</button>
+                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn">📱 QR Code</a>
+                    <button onclick="deleteURL('{url['short_code']}')" class="action-btn delete-btn">🗑️ Delete</button>
                 </div>
             </div>
-            <div class="long-url" title="{url['long_url']}">
-                {url['long_url'][:60]}{'...' if len(url['long_url']) > 60 else ''}
-            </div>
-            <div class="url-info">
-                <span class="clicks-count">👁️ {url.get('clicks', 0)} clicks</span>
-                {f'<span class="expiry-badge">{expires_info}</span>' if expires_info else ''}
-                {f'<span class="password-badge">{password_info}</span>' if password_info else ''}
-            </div>
-            <div class="created-date">📅 {url['created_at'].strftime('%Y-%m-%d %H:%M')}</div>
+            <div class="long-url">{url['long_url'][:60]}{'...' if len(url['long_url']) > 60 else ''}</div>
+            <div class="clicks-count">👁️ {url.get('clicks', 0)} clicks</div>
+            <div class="created-date">📅 {url['created_at'].strftime('%Y-%m-%d')}</div>
         </div>
         """
     
     if not urls:
-        urls_html = """
-        <div class="empty-state">
-            <div class="empty-state-icon">🔗</div>
-            <h3>No URLs yet</h3>
-            <p>Create your first short URL below!</p>
-        </div>
-        """
+        urls_html = '<div class="empty-state"><div class="empty-state-icon">🔗</div><h3>No URLs yet</h3><p>Create your first short URL below!</p></div>'
     
     return HTMLResponse(f"""
     <!DOCTYPE html>
@@ -128,14 +116,10 @@ async def dashboard(request: Request, token: str = Cookie(None)):
     <body>
         <nav class="navbar">
             <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
+                <div class="logo"><span class="logo-icon">🔗</span><span class="logo-text">Linkify</span></div>
                 <div class="nav-links">
                     <a href="/dashboard" class="nav-link active">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn">Features ▼</button>
+                    <div class="dropdown"><button class="dropbtn">Features ▼</button>
                         <div class="dropdown-content">
                             <a href="/feature/custom-code">✨ Custom Short Code</a>
                             <a href="/feature/qr-code">📱 QR Code</a>
@@ -144,10 +128,7 @@ async def dashboard(request: Request, token: str = Cookie(None)):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
-                    <div class="user-info">
-                        <span class="user-email">{user['email']}</span>
-                        <a href="/logout" class="logout-btn">Logout</a>
-                    </div>
+                    <div class="user-info"><span class="user-email">{user['email']}</span><button onclick="logout()" class="logout-btn">Logout</button></div>
                 </div>
             </div>
         </nav>
@@ -156,27 +137,18 @@ async def dashboard(request: Request, token: str = Cookie(None)):
             <div class="dashboard-header">
                 <h1>📊 Your URLs</h1>
                 <p>Track and manage all your shortened links</p>
-                <div class="legend">
-                    <span class="legend-item">🔒 = Password protected</span>
-                    <span class="legend-item">📅 = Has expiration date</span>
-                    <span class="legend-item">👁️ = Total clicks</span>
-                </div>
             </div>
 
-            <!-- URL Shortener Form -->
             <div class="shortener-card" style="margin-bottom: 2rem;">
-                <div class="card-header">
-                    <h2>Create New Short URL</h2>
-                    <p>Paste your long URL and get a short link</p>
-                </div>
+                <div class="card-header"><h2>Create New Short URL</h2><p>Paste your long URL and get a short link</p></div>
                 <div class="url-input-group">
                     <input type="url" id="longUrl" placeholder="https://example.com/very/long/url" class="url-input">
                     <button id="shortenBtn" class="shorten-btn">Shorten URL ⚡</button>
                 </div>
                 <div class="optional-fields" style="display: flex; gap: 1rem; margin-top: 1rem;">
-                    <input type="text" id="customCode" placeholder="Custom code (optional)" class="url-input" style="flex: 1;">
-                    <input type="number" id="expiresDays" placeholder="Expires in days" class="url-input" style="flex: 1;">
-                    <input type="password" id="password" placeholder="Password (optional)" class="url-input" style="flex: 1;">
+                    <input type="text" id="customCode" placeholder="Custom code (optional)" class="url-input" style="flex:1">
+                    <input type="number" id="expiresDays" placeholder="Expires in days" class="url-input" style="flex:1">
+                    <input type="password" id="password" placeholder="Password (optional)" class="url-input" style="flex:1">
                 </div>
                 <div id="shortenResult" style="display: none; margin-top: 1rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
                     <p>✅ <strong>Your short URL is ready!</strong></p>
@@ -187,99 +159,74 @@ async def dashboard(request: Request, token: str = Cookie(None)):
             </div>
 
             <div class="urls-table">
-                <div class="table-header">
-                    <div>Short URL</div>
-                    <div>Original URL</div>
-                    <div>Info</div>
-                    <div>Created</div>
-                </div>
+                <div class="table-header"><div>Short URL</div><div>Original URL</div><div>Clicks</div><div>Created</div></div>
                 {urls_html}
             </div>
         </div>
 
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
+        <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify - Make your links shorter and smarter</p></div></footer>
 
         <script>
+        const token = localStorage.getItem('token');
+        if (!token) {{
+            window.location.href = '/';
+        }}
+
         async function deleteURL(shortCode) {{
-            if (confirm('Are you sure you want to delete this URL? This action cannot be undone.')) {{
-                try {{
-                    const response = await fetch(`/delete/${{shortCode}}`, {{
-                        method: 'DELETE'
-                    }});
-                    
-                    if (response.ok) {{
-                        document.getElementById(`row-${{shortCode}}`).remove();
-                        alert('✅ URL deleted successfully!');
-                        if (document.querySelectorAll('.url-row').length === 0) {{
-                            location.reload();
-                        }}
-                    }} else {{
-                        const data = await response.json();
-                        alert(data.detail || 'Failed to delete URL');
-                    }}
-                }} catch (error) {{
-                    alert('Error deleting URL');
-                }}
+            if (confirm('Delete this URL?')) {{
+                const response = await fetch(`/delete/${{shortCode}}`, {{
+                    method: 'DELETE',
+                    headers: {{'Authorization': `Bearer ${{token}}`}}
+                }});
+                if (response.ok) location.reload();
             }}
         }}
 
-        // URL Shortener Function
         document.getElementById('shortenBtn').addEventListener('click', async () => {{
             const longUrl = document.getElementById('longUrl').value;
             const customCode = document.getElementById('customCode').value;
             const expiresDays = document.getElementById('expiresDays').value;
             const password = document.getElementById('password').value;
             
-            const resultDiv = document.getElementById('shortenResult');
-            const errorDiv = document.getElementById('shortenError');
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            
             if (!longUrl) {{
-                errorDiv.innerHTML = 'Please enter a URL';
-                errorDiv.style.display = 'block';
+                document.getElementById('shortenError').innerHTML = 'Please enter a URL';
+                document.getElementById('shortenError').style.display = 'block';
                 return;
             }}
             
-            try {{
-                const body = {{long_url: longUrl}};
-                if (customCode) body.custom_code = customCode;
-                if (expiresDays) body.expires_days = parseInt(expiresDays);
-                if (password) body.password = password;
-                
-                const response = await fetch('/shorten', {{
-                    method: 'POST',
-                    headers: {{'Content-Type': 'application/json'}},
-                    body: JSON.stringify(body)
-                }});
-                const data = await response.json();
-                
-                if (response.ok) {{
-                    document.getElementById('shortUrlResult').innerHTML = data.short_url;
-                    resultDiv.style.display = 'block';
-                    document.getElementById('longUrl').value = '';
-                    document.getElementById('customCode').value = '';
-                    document.getElementById('expiresDays').value = '';
-                    document.getElementById('password').value = '';
-                    setTimeout(() => location.reload(), 1500);
-                }} else {{
-                    errorDiv.innerHTML = data.detail || 'Failed to create URL';
-                    errorDiv.style.display = 'block';
-                }}
-            }} catch(err) {{
-                errorDiv.innerHTML = 'Failed to create URL';
-                errorDiv.style.display = 'block';
+            const body = {{long_url: longUrl}};
+            if (customCode) body.custom_code = customCode;
+            if (expiresDays) body.expires_days = parseInt(expiresDays);
+            if (password) body.password = password;
+            
+            const response = await fetch('/shorten', {{
+                method: 'POST',
+                headers: {{'Content-Type': 'application/json', 'Authorization': `Bearer ${{token}}`}},
+                body: JSON.stringify(body)
+            }});
+            const data = await response.json();
+            if (response.ok) {{
+                document.getElementById('shortUrlResult').innerHTML = data.short_url;
+                document.getElementById('shortenResult').style.display = 'block';
+                document.getElementById('longUrl').value = '';
+                document.getElementById('customCode').value = '';
+                document.getElementById('expiresDays').value = '';
+                document.getElementById('password').value = '';
+                setTimeout(() => location.reload(), 1500);
+            }} else {{
+                document.getElementById('shortenError').innerHTML = data.detail || 'Failed';
+                document.getElementById('shortenError').style.display = 'block';
             }}
         }});
 
         function copyShortUrl() {{
-            const url = document.getElementById('shortUrlResult').innerHTML;
-            navigator.clipboard.writeText(url);
-            alert('✅ Copied to clipboard!');
+            navigator.clipboard.writeText(document.getElementById('shortUrlResult').innerHTML);
+            alert('✅ Copied!');
+        }}
+
+        function logout() {{
+            localStorage.removeItem('token');
+            window.location.href = '/';
         }}
         </script>
     </body>
@@ -289,190 +236,120 @@ async def dashboard(request: Request, token: str = Cookie(None)):
 # ============ FEATURE PAGES ============
 
 @app.get("/feature/custom-code", response_class=HTMLResponse)
-async def custom_code_page(request: Request, token: str = Cookie(None)):
-    user = await get_current_user(token)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
+async def custom_code_page(request: Request):
     return templates.TemplateResponse("feature_custom_code.html", {"request": request})
 
 @app.get("/feature/qr-code", response_class=HTMLResponse)
-async def qr_code_page(request: Request, token: str = Cookie(None)):
-    user = await get_current_user(token)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
+async def qr_code_page(request: Request):
     return templates.TemplateResponse("feature_qr_code.html", {"request": request})
 
 @app.get("/feature/expiration", response_class=HTMLResponse)
-async def expiration_page(request: Request, token: str = Cookie(None)):
-    user = await get_current_user(token)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
+async def expiration_page(request: Request):
     return templates.TemplateResponse("feature_expiration.html", {"request": request})
 
 @app.get("/feature/password", response_class=HTMLResponse)
-async def password_page(request: Request, token: str = Cookie(None)):
-    user = await get_current_user(token)
-    if not user:
-        return RedirectResponse(url="/", status_code=303)
+async def password_page(request: Request):
     return templates.TemplateResponse("feature_password.html", {"request": request})
 
 @app.get("/about", response_class=HTMLResponse)
 async def about_page(request: Request):
     return HTMLResponse("""
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>About - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
-    </head>
-    <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
-                <div class="nav-links">
-                    <a href="/dashboard" class="nav-link">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code">📱 QR Code</a>
-                            <a href="/feature/expiration">⏰ URL Expiration</a>
-                            <a href="/feature/password">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link active">About</a>
-                    <a href="/logout" class="logout-btn">Logout</a>
-                </div>
-            </div>
-        </nav>
-        <div class="about-page">
-            <div class="about-header">
-                <h1>About Linkify</h1>
-                <p>Professional URL Shortener Service</p>
-            </div>
-            <div class="about-content">
-                <div class="about-card">
-                    <h2>🚀 What is Linkify?</h2>
-                    <p>Linkify is a professional URL shortener that helps you create short, memorable links that you can share anywhere.</p>
-                </div>
-                <div class="about-card">
-                    <h2>✨ Features</h2>
-                    <ul><li>🔗 Custom Short Codes</li><li>📱 QR Code Generation</li><li>⏰ URL Expiration</li><li>🔒 Password Protection</li><li>📊 Analytics Dashboard</li></ul>
-                </div>
-            </div>
-        </div>
-        <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify</p></div></footer>
-    </body>
-    </html>
+    <html><head><title>About</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css"></head>
+    <body><nav class="navbar"><div class="nav-container"><div class="logo"><span class="logo-icon">🔗</span><span class="logo-text">Linkify</span></div>
+    <div class="nav-links"><a href="/dashboard" class="nav-link">Dashboard</a><div class="dropdown"><button class="dropbtn">Features ▼</button>
+    <div class="dropdown-content"><a href="/feature/custom-code">✨ Custom Short Code</a><a href="/feature/qr-code">📱 QR Code</a>
+    <a href="/feature/expiration">⏰ URL Expiration</a><a href="/feature/password">🔒 Password Protection</a></div></div>
+    <a href="/about" class="nav-link active">About</a><button onclick="logout()" class="logout-btn">Logout</button></div></div></nav>
+    <div class="about-page"><div class="about-header"><h1>About Linkify</h1><p>Professional URL Shortener</p></div>
+    <div class="about-card"><h2>🚀 What is Linkify?</h2><p>Linkify helps you create short, memorable links that you can share anywhere.</p></div>
+    <div class="about-card"><h2>✨ Features</h2><ul><li>✨ Custom Short Codes</li><li>📱 QR Code Generation</li><li>⏰ URL Expiration</li><li>🔒 Password Protection</li><li>📊 Analytics Dashboard</li></ul></div></div>
+    <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify</p></div></footer>
+    <script>function logout(){localStorage.removeItem('token');window.location.href='/';}</script>
+    </body></html>
     """)
 
 # ============ AUTH API ============
 
 @app.post("/api/signup")
 async def signup(user_data: schemas.UserCreate):
-    """Create a new user account"""
     db = get_db()
-    
     existing = await db.users.find_one({"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
     password_hash = hash_password(user_data.password)
-    user = {
-        "email": user_data.email,
-        "password_hash": password_hash,
-        "created_at": datetime.utcnow(),
-        "is_active": True
-    }
-    
+    user = {"email": user_data.email, "password_hash": password_hash, "created_at": datetime.utcnow(), "is_active": True}
     result = await db.users.insert_one(user)
     user_id = str(result.inserted_id)
     
     token = generate_session_token()
-    session = {
-        "user_id": user_id,
-        "token": token,
-        "created_at": datetime.utcnow(),
-        "expires_at": datetime.utcnow() + timedelta(days=30)
-    }
+    session = {"user_id": user_id, "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
     await db.sessions.insert_one(session)
     
     return {"message": "User created successfully", "token": token}
 
 @app.post("/api/login")
 async def login(user_data: schemas.UserLogin):
-    """Login user and set cookie"""
     db = get_db()
-    
     user = await db.users.find_one({"email": user_data.email})
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    is_valid = verify_password(user_data.password, user["password_hash"])
-    if not is_valid:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_password(user_data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = generate_session_token()
-    session = {
-        "user_id": str(user["_id"]),
-        "token": token,
-        "created_at": datetime.utcnow(),
-        "expires_at": datetime.utcnow() + timedelta(days=30)
-    }
+    session = {"user_id": str(user["_id"]), "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
     await db.sessions.insert_one(session)
     
-    # Return JSON response with cookie header
-    response = JSONResponse(content={"message": "Login successful", "token": token})
-    response.set_cookie(key="token", value=token, httponly=True, max_age=2592000, path="/")
-    return response
-
-@app.get("/logout")
-async def logout(token: str = Cookie(None)):
-    if token:
-        db = get_db()
-        await db.sessions.delete_one({"token": token})
-    response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie("token")
-    return response
+    return {"message": "Login successful", "token": token}
 
 # ============ URL API ============
 
 @app.post("/shorten")
-async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None)):
-    db = get_db()
-    user = await get_current_user(token)
-    user_id = str(user["_id"]) if user else None
-    if not user_id:
+async def create_short_url(url_data: schemas.URLCreate, authorization: str = Header(None)):
+    token = authorization.replace("Bearer ", "") if authorization else None
+    user = await get_current_user_from_token(token)
+    if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_id = str(user["_id"])
     
     if url_data.custom_code:
         short_code = url_data.custom_code
-        existing = await db.urls.find_one({"short_code": short_code})
+        existing = await get_db().urls.find_one({"short_code": short_code})
         if existing:
             raise HTTPException(status_code=400, detail="Custom code already taken")
     else:
         short_code = utils.generate_random_code()
-        existing = await db.urls.find_one({"short_code": short_code})
+        existing = await get_db().urls.find_one({"short_code": short_code})
         while existing:
             short_code = utils.generate_random_code()
-            existing = await db.urls.find_one({"short_code": short_code})
+            existing = await get_db().urls.find_one({"short_code": short_code})
     
     url_doc = models.url_document(short_code, str(url_data.long_url), user_id, url_data.custom_code, url_data.expires_days, url_data.password)
-    await db.urls.insert_one(url_doc)
+    await get_db().urls.insert_one(url_doc)
     
-    return {
-        "short_code": short_code,
-        "short_url": f"{settings.BASE_URL}/{short_code}",
-        "long_url": str(url_data.long_url),
-        "created_at": url_doc["created_at"],
-        "clicks": 0
-    }
+    return {"short_code": short_code, "short_url": f"{settings.BASE_URL}/{short_code}", "long_url": str(url_data.long_url), "created_at": url_doc["created_at"], "clicks": 0}
+
+@app.delete("/delete/{short_code}")
+async def delete_url(short_code: str, authorization: str = Header(None)):
+    token = authorization.replace("Bearer ", "") if authorization else None
+    user = await get_current_user_from_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    db = get_db()
+    url_data = await db.urls.find_one({"short_code": short_code})
+    if not url_data:
+        raise HTTPException(status_code=404, detail="URL not found")
+    if url_data.get("user_id") != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    await db.urls.delete_one({"short_code": short_code})
+    return {"message": "Deleted"}
 
 @app.post("/generate-qr")
 async def generate_qr_code_api(data: dict):
@@ -490,43 +367,11 @@ async def get_qr_code_page(short_code: str):
         raise HTTPException(status_code=404, detail="URL not found")
     short_url = f"{settings.BASE_URL}/{short_code}"
     qr_img = generate_qr_code(short_url)
-    return HTMLResponse(f"""
-    <!DOCTYPE html><html><head><title>QR Code</title></head>
-    <body style="text-align:center;background:#0a0a0a;color:white;"><h1>QR Code</h1>
-    <img src="data:image/png;base64,{qr_img}" alt="QR Code"><p>{short_url}</p>
-    <a href="/dashboard">Back</a></body></html>
-    """)
+    return HTMLResponse(f"<html><body style='text-align:center;background:#0a0a0a;color:white;'><h1>QR Code</h1><img src='data:image/png;base64,{qr_img}'><p>{short_url}</p><a href='/dashboard'>Back</a></body></html>")
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
-
-@app.delete("/delete/{short_code}")
-async def delete_url(short_code: str, token: str = Cookie(None)):
-    db = get_db()
-    user = await get_current_user(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    user_id = str(user["_id"])
-    url_data = await db.urls.find_one({"short_code": short_code})
-    if not url_data:
-        raise HTTPException(status_code=404, detail="URL not found")
-    if url_data.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    await db.urls.delete_one({"short_code": short_code})
-    return {"message": "URL deleted successfully"}
-
-# ============ SEO ROUTES ============
-
-@app.get("/robots.txt")
-async def robots():
-    return Response(content="User-agent: *\nAllow: /\nDisallow: /dashboard\nSitemap: https://linkify-1nnz.onrender.com/sitemap.xml", media_type="text/plain")
-
-@app.get("/sitemap.xml")
-async def sitemap():
-    return Response(content='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://linkify-1nnz.onrender.com/</loc></url></urlset>', media_type="application/xml")
-
-# ============ REDIRECT ============
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
@@ -535,14 +380,13 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
     if url_data.get("expires_at") and url_data["expires_at"] < datetime.utcnow():
-        raise HTTPException(status_code=410, detail="This link has expired")
+        raise HTTPException(status_code=410, detail="Link expired")
     if url_data.get("password"):
         if not password:
             return HTMLResponse("""
-            <!DOCTYPE html><html><head><title>Password Protected</title>
-            <style>body{font-family:Arial;background:#0a0a0a;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;color:white;}</style>
-            </head><body><div style="background:#111;padding:2rem;border-radius:10px;"><h2>🔒 Password Protected</h2>
-            <form method="get"><input type="password" name="password" placeholder="Enter password"><br><button type="submit">Unlock</button></form></div></body></html>
+            <html><body style="background:#0a0a0a;color:white;display:flex;justify-content:center;align-items:center;height:100vh;">
+            <div style="background:#111;padding:2rem;border-radius:10px;"><h2>🔒 Password Protected</h2>
+            <form method="get"><input type="password" name="password" placeholder="Password"><br><button type="submit">Unlock</button></form></div></body></html>
             """)
         if password != url_data["password"]:
             raise HTTPException(status_code=401, detail="Incorrect password")
