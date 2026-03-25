@@ -29,7 +29,7 @@ async def shutdown_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Serve the homepage"""
+    """Serve the homepage - only URL shortener"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -46,18 +46,14 @@ async def dashboard(request: Request):
         
         # Show expiration info if exists
         expires_info = ""
-        expires_class = ""
         if url.get('expires_at'):
             expires_date = url['expires_at'].strftime('%Y-%m-%d')
             expires_info = f"📅 Expires: {expires_date}"
-            expires_class = "has-expiry"
         
         # Show password info if exists
         password_info = ""
-        password_class = ""
         if url.get('is_password_protected'):
             password_info = "🔒 Password Protected"
-            password_class = "has-password"
         
         urls_html += f"""
         <div class="url-row" id="row-{url['short_code']}">
@@ -66,8 +62,8 @@ async def dashboard(request: Request):
                     {settings.BASE_URL}/{url['short_code']}
                 </a>
                 <div class="url-actions">
-                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn" title="Generate QR Code">📱</a>
-                    <button onclick="{delete_link}" class="action-btn delete-btn" title="Delete URL">🗑️</button>
+                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn" title="Generate QR Code">📱 QR Code</a>
+                    <button onclick="{delete_link}" class="action-btn delete-btn" title="Delete URL">🗑️ Delete</button>
                 </div>
             </div>
             <div class="long-url" title="{url['long_url']}">
@@ -75,8 +71,8 @@ async def dashboard(request: Request):
             </div>
             <div class="url-info">
                 <span class="clicks-count">👁️ {url.get('clicks', 0)} clicks</span>
-                {f'<span class="expiry-badge {expires_class}">{expires_info}</span>' if expires_info else ''}
-                {f'<span class="password-badge {password_class}">{password_info}</span>' if password_info else ''}
+                {f'<span class="expiry-badge">{expires_info}</span>' if expires_info else ''}
+                {f'<span class="password-badge">{password_info}</span>' if password_info else ''}
             </div>
             <div class="created-date">📅 {url['created_at'].strftime('%Y-%m-%d %H:%M')}</div>
         </div>
@@ -115,10 +111,10 @@ async def dashboard(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code">✨ Custom Short Codes</a>
-                            <a href="/qr-code">📱 QR Code Generator</a>
-                            <a href="/expiration">⏰ URL Expiration</a>
-                            <a href="/password">🔒 Password Protection</a>
+                            <a href="/feature/custom-code">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code">📱 QR Code</a>
+                            <a href="/feature/expiration">⏰ URL Expiration</a>
+                            <a href="/feature/password">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
@@ -182,18 +178,18 @@ async def dashboard(request: Request):
     </html>
     """)
 
-# ============ FEATURE PAGES ============
+# ============ FEATURE PAGES (Each with its own form) ============
 
-@app.get("/custom-code", response_class=HTMLResponse)
+@app.get("/feature/custom-code", response_class=HTMLResponse)
 async def custom_code_page(request: Request):
-    """Custom short codes feature page"""
+    """Custom short codes feature page with form"""
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Custom Short Codes - Linkify</title>
+        <title>Custom Short Code - Linkify</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="/static/css/style.css">
     </head>
@@ -210,10 +206,10 @@ async def custom_code_page(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn active">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code" class="active">✨ Custom Short Codes</a>
-                            <a href="/qr-code">📱 QR Code Generator</a>
-                            <a href="/expiration">⏰ URL Expiration</a>
-                            <a href="/password">🔒 Password Protection</a>
+                            <a href="/feature/custom-code" class="active">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code">📱 QR Code</a>
+                            <a href="/feature/expiration">⏰ URL Expiration</a>
+                            <a href="/feature/password">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
@@ -223,32 +219,42 @@ async def custom_code_page(request: Request):
 
         <div class="feature-page">
             <div class="feature-header">
-                <h1>✨ Custom Short Codes</h1>
-                <p>Create memorable, branded links that are easy to share</p>
+                <h1>✨ Custom Short Code</h1>
+                <p>Create a memorable, branded link with your own custom code</p>
             </div>
 
             <div class="feature-content">
                 <div class="feature-card-large">
-                    <h2>How it works</h2>
-                    <p>Instead of random codes like <code>aB3xK9</code>, you can create custom short codes like:</p>
+                    <h2>Create Your Custom Short URL</h2>
+                    <form id="shortenForm" class="feature-form">
+                        <div class="form-group">
+                            <label>🔗 Long URL</label>
+                            <input type="url" id="longUrl" placeholder="https://example.com/your-long-url" required>
+                        </div>
+                        <div class="form-group">
+                            <label>✨ Custom Short Code</label>
+                            <input type="text" id="customCode" placeholder="my-custom-link (letters, numbers, hyphens only)" required>
+                            <small>Example: mywebsite, portfolio, link2026</small>
+                        </div>
+                        <button type="submit" class="btn-primary">Create Custom Short URL →</button>
+                    </form>
+                    
+                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
+                        <p>✅ <strong>Your short URL is ready!</strong></p>
+                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
+                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
+                    </div>
+                    
+                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
+                </div>
+
+                <div class="feature-tip">
+                    <strong>💡 Examples of great custom codes:</strong>
                     <div class="example-list">
-                        <div class="example-item">
-                            <span class="example-icon">🎯</span>
-                            <code>linkify.onrender.com/mywebsite</code>
-                        </div>
-                        <div class="example-item">
-                            <span class="example-icon">📱</span>
-                            <code>linkify.onrender.com/instagram</code>
-                        </div>
-                        <div class="example-item">
-                            <span class="example-icon">🛍️</span>
-                            <code>linkify.onrender.com/sale2026</code>
-                        </div>
+                        <div class="example-item">🔗 linkify.onrender.com/<strong>myportfolio</strong></div>
+                        <div class="example-item">🔗 linkify.onrender.com/<strong>instagram</strong></div>
+                        <div class="example-item">🔗 linkify.onrender.com/<strong>sale2026</strong></div>
                     </div>
-                    <div class="feature-tip">
-                        <strong>💡 Tip:</strong> Use letters, numbers, and hyphens only. Keep it short and memorable!
-                    </div>
-                    <a href="/" class="btn-primary">Try it now →</a>
                 </div>
             </div>
         </div>
@@ -258,13 +264,53 @@ async def custom_code_page(request: Request):
                 <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
             </div>
         </footer>
+
+        <script>
+        document.getElementById('shortenForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('longUrl').value;
+            const customCode = document.getElementById('customCode').value;
+            
+            const resultDiv = document.getElementById('result');
+            const errorDiv = document.getElementById('error');
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({long_url: longUrl, custom_code: customCode})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('shortUrl').innerHTML = data.short_url;
+                    resultDiv.style.display = 'block';
+                    document.getElementById('longUrl').value = '';
+                    document.getElementById('customCode').value = '';
+                } else {
+                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
+                errorDiv.style.display = 'block';
+            }
+        });
+        
+        function copyUrl() {
+            const url = document.getElementById('shortUrl').innerHTML;
+            navigator.clipboard.writeText(url);
+            alert('✅ Copied to clipboard!');
+        }
+        </script>
     </body>
     </html>
     """)
 
-@app.get("/qr-code", response_class=HTMLResponse)
+@app.get("/feature/qr-code", response_class=HTMLResponse)
 async def qr_code_page(request: Request):
-    """QR Code feature page"""
+    """QR Code feature page with form"""
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
@@ -288,10 +334,10 @@ async def qr_code_page(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn active">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code">✨ Custom Short Codes</a>
-                            <a href="/qr-code" class="active">📱 QR Code Generator</a>
-                            <a href="/expiration">⏰ URL Expiration</a>
-                            <a href="/password">🔒 Password Protection</a>
+                            <a href="/feature/custom-code">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code" class="active">📱 QR Code</a>
+                            <a href="/feature/expiration">⏰ URL Expiration</a>
+                            <a href="/feature/password">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
@@ -302,37 +348,34 @@ async def qr_code_page(request: Request):
         <div class="feature-page">
             <div class="feature-header">
                 <h1>📱 QR Code Generator</h1>
-                <p>Generate QR codes for any short URL - perfect for business cards, posters, and more!</p>
+                <p>Generate QR codes for any URL - perfect for business cards, posters, and more!</p>
             </div>
 
             <div class="feature-content">
                 <div class="feature-card-large">
-                    <h2>How it works</h2>
-                    <p>Every short URL you create automatically has a QR code. Just look for the 📱 icon in your dashboard!</p>
-                    
-                    <div class="qr-example">
-                        <div class="qr-preview">
-                            <div class="qr-placeholder">
-                                <span>📱</span>
-                                <p>Your QR code appears here</p>
-                            </div>
+                    <h2>Generate QR Code</h2>
+                    <form id="qrForm" class="feature-form">
+                        <div class="form-group">
+                            <label>🔗 Enter URL to generate QR code</label>
+                            <input type="url" id="urlInput" placeholder="https://example.com/your-link" required>
                         </div>
-                        <div class="qr-info">
-                            <h3>Perfect for:</h3>
-                            <ul>
-                                <li>📇 Business cards</li>
-                                <li>🖼️ Posters and flyers</li>
-                                <li>📦 Product packaging</li>
-                                <li>🎫 Event tickets</li>
-                                <li>📱 Social media profiles</li>
-                            </ul>
+                        <button type="submit" class="btn-primary">Generate QR Code →</button>
+                    </form>
+                    
+                    <div id="qrResult" style="display: none; margin-top: 2rem; text-align: center;">
+                        <div style="background: white; padding: 1rem; border-radius: 12px; display: inline-block;">
+                            <img id="qrImage" src="" alt="QR Code" style="width: 200px; height: 200px;">
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <button onclick="downloadQR()" class="btn-primary">📥 Download QR Code</button>
                         </div>
                     </div>
                     
-                    <div class="feature-tip">
-                        <strong>💡 Tip:</strong> Scan QR codes with your phone camera - no app needed!
-                    </div>
-                    <a href="/dashboard" class="btn-primary">View Dashboard →</a>
+                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
+                </div>
+
+                <div class="feature-tip">
+                    <strong>💡 Perfect for:</strong> Business cards, product packaging, event flyers, social media profiles, restaurant menus
                 </div>
             </div>
         </div>
@@ -342,13 +385,51 @@ async def qr_code_page(request: Request):
                 <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
             </div>
         </footer>
+
+        <script>
+        document.getElementById('qrForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('urlInput').value;
+            const errorDiv = document.getElementById('error');
+            const qrResult = document.getElementById('qrResult');
+            errorDiv.style.display = 'none';
+            qrResult.style.display = 'none';
+            
+            try {
+                const response = await fetch('/generate-qr', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('qrImage').src = data.qr_code;
+                    qrResult.style.display = 'block';
+                } else {
+                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to generate QR code';
+                errorDiv.style.display = 'block';
+            }
+        });
+        
+        function downloadQR() {
+            const img = document.getElementById('qrImage');
+            const link = document.createElement('a');
+            link.download = 'qrcode.png';
+            link.href = img.src;
+            link.click();
+        }
+        </script>
     </body>
     </html>
     """)
 
-@app.get("/expiration", response_class=HTMLResponse)
+@app.get("/feature/expiration", response_class=HTMLResponse)
 async def expiration_page(request: Request):
-    """URL Expiration feature page"""
+    """URL Expiration feature page with form"""
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
@@ -372,10 +453,10 @@ async def expiration_page(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn active">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code">✨ Custom Short Codes</a>
-                            <a href="/qr-code">📱 QR Code Generator</a>
-                            <a href="/expiration" class="active">⏰ URL Expiration</a>
-                            <a href="/password">🔒 Password Protection</a>
+                            <a href="/feature/custom-code">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code">📱 QR Code</a>
+                            <a href="/feature/expiration" class="active">⏰ URL Expiration</a>
+                            <a href="/feature/password">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
@@ -386,39 +467,37 @@ async def expiration_page(request: Request):
         <div class="feature-page">
             <div class="feature-header">
                 <h1>⏰ URL Expiration</h1>
-                <p>Set links to automatically expire after a specific time</p>
+                <p>Create links that automatically expire after a set number of days</p>
             </div>
 
             <div class="feature-content">
                 <div class="feature-card-large">
-                    <h2>Perfect for:</h2>
-                    <div class="use-cases-grid">
-                        <div class="use-case">
-                            <div class="use-icon">🎉</div>
-                            <h3>Limited Offers</h3>
-                            <p>Promotions that end on a specific date</p>
+                    <h2>Create Expiring Link</h2>
+                    <form id="expirationForm" class="feature-form">
+                        <div class="form-group">
+                            <label>🔗 Long URL</label>
+                            <input type="url" id="longUrl" placeholder="https://example.com/your-link" required>
                         </div>
-                        <div class="use-case">
-                            <div class="use-icon">📧</div>
-                            <h3>Email Campaigns</h3>
-                            <p>Time-sensitive newsletters and updates</p>
+                        <div class="form-group">
+                            <label>⏰ Expires in (days)</label>
+                            <input type="number" id="expiresDays" placeholder="7" min="1" max="365" required>
+                            <small>Link will stop working after this many days</small>
                         </div>
-                        <div class="use-case">
-                            <div class="use-icon">🎟️</div>
-                            <h3>Event Invitations</h3>
-                            <p>Links that stop working after the event</p>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-icon">🔒</div>
-                            <h3>Temporary Access</h3>
-                            <p>Share sensitive links for a limited time</p>
-                        </div>
+                        <button type="submit" class="btn-primary">Create Expiring Link →</button>
+                    </form>
+                    
+                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
+                        <p>✅ <strong>Your expiring short URL is ready!</strong></p>
+                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
+                        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #ffa500;">⏰ This link will expire in <span id="expiresIn"></span> days</p>
+                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
                     </div>
                     
-                    <div class="feature-tip">
-                        <strong>💡 How to use:</strong> Simply enter the number of days in the "Expires in days" field when creating your short URL.
-                    </div>
-                    <a href="/" class="btn-primary">Create expiring link →</a>
+                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
+                </div>
+
+                <div class="feature-tip">
+                    <strong>💡 Perfect for:</strong> Limited-time promotions, event invitations, temporary access links, seasonal campaigns
                 </div>
             </div>
         </div>
@@ -428,13 +507,54 @@ async def expiration_page(request: Request):
                 <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
             </div>
         </footer>
+
+        <script>
+        document.getElementById('expirationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('longUrl').value;
+            const expiresDays = document.getElementById('expiresDays').value;
+            
+            const resultDiv = document.getElementById('result');
+            const errorDiv = document.getElementById('error');
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({long_url: longUrl, expires_days: parseInt(expiresDays)})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('shortUrl').innerHTML = data.short_url;
+                    document.getElementById('expiresIn').innerHTML = expiresDays;
+                    resultDiv.style.display = 'block';
+                    document.getElementById('longUrl').value = '';
+                    document.getElementById('expiresDays').value = '';
+                } else {
+                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
+                errorDiv.style.display = 'block';
+            }
+        });
+        
+        function copyUrl() {
+            const url = document.getElementById('shortUrl').innerHTML;
+            navigator.clipboard.writeText(url);
+            alert('✅ Copied to clipboard!');
+        }
+        </script>
     </body>
     </html>
     """)
 
-@app.get("/password", response_class=HTMLResponse)
+@app.get("/feature/password", response_class=HTMLResponse)
 async def password_page(request: Request):
-    """Password Protection feature page"""
+    """Password Protection feature page with form"""
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
@@ -458,10 +578,10 @@ async def password_page(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn active">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code">✨ Custom Short Codes</a>
-                            <a href="/qr-code">📱 QR Code Generator</a>
-                            <a href="/expiration">⏰ URL Expiration</a>
-                            <a href="/password" class="active">🔒 Password Protection</a>
+                            <a href="/feature/custom-code">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code">📱 QR Code</a>
+                            <a href="/feature/expiration">⏰ URL Expiration</a>
+                            <a href="/feature/password" class="active">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
@@ -477,33 +597,37 @@ async def password_page(request: Request):
 
             <div class="feature-content">
                 <div class="feature-card-large">
-                    <h2>How it works</h2>
-                    <p>When you create a short URL with a password, anyone who clicks it will need to enter the correct password before being redirected.</p>
+                    <h2>Create Password-Protected Link</h2>
+                    <form id="passwordForm" class="feature-form">
+                        <div class="form-group">
+                            <label>🔗 Long URL</label>
+                            <input type="url" id="longUrl" placeholder="https://example.com/your-link" required>
+                        </div>
+                        <div class="form-group">
+                            <label>🔒 Password</label>
+                            <input type="password" id="password" placeholder="Enter a strong password" required>
+                            <small>Visitors will need this password to access the link</small>
+                        </div>
+                        <button type="submit" class="btn-primary">Create Protected Link →</button>
+                    </form>
                     
-                    <div class="demo-box">
-                        <h3>Example:</h3>
-                        <div class="demo-step">
-                            <span class="step-number">1</span>
-                            <span>Create URL with password: <code>mysecret123</code></span>
-                        </div>
-                        <div class="demo-step">
-                            <span class="step-number">2</span>
-                            <span>Share the link: <code>linkify.onrender.com/private-link</code></span>
-                        </div>
-                        <div class="demo-step">
-                            <span class="step-number">3</span>
-                            <span>Recipient sees a password prompt 🔒</span>
-                        </div>
-                        <div class="demo-step">
-                            <span class="step-number">4</span>
-                            <span>Enter password → Redirected! ✅</span>
-                        </div>
+                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
+                        <p>✅ <strong>Your password-protected short URL is ready!</strong></p>
+                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
+                        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #ffa500;">🔒 This link is password protected. Share the password separately!</p>
+                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
                     </div>
                     
-                    <div class="feature-tip">
-                        <strong>💡 Security Tip:</strong> Use strong passwords with a mix of letters, numbers, and special characters.
-                    </div>
-                    <a href="/" class="btn-primary">Create password-protected link →</a>
+                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
+                </div>
+
+                <div class="feature-tip">
+                    <strong>💡 Security Tips:</strong>
+                    <ul style="margin-top: 0.5rem; color: #888;">
+                        <li>Use strong passwords with letters, numbers, and symbols</li>
+                        <li>Share the password separately from the link</li>
+                        <li>Perfect for private documents, personal photos, confidential information</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -513,6 +637,46 @@ async def password_page(request: Request):
                 <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
             </div>
         </footer>
+
+        <script>
+        document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('longUrl').value;
+            const password = document.getElementById('password').value;
+            
+            const resultDiv = document.getElementById('result');
+            const errorDiv = document.getElementById('error');
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/shorten', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({long_url: longUrl, password: password})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('shortUrl').innerHTML = data.short_url;
+                    resultDiv.style.display = 'block';
+                    document.getElementById('longUrl').value = '';
+                    document.getElementById('password').value = '';
+                } else {
+                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
+                errorDiv.style.display = 'block';
+            }
+        });
+        
+        function copyUrl() {
+            const url = document.getElementById('shortUrl').innerHTML;
+            navigator.clipboard.writeText(url);
+            alert('✅ Copied to clipboard!');
+        }
+        </script>
     </body>
     </html>
     """)
@@ -543,10 +707,10 @@ async def about_page(request: Request):
                     <div class="dropdown">
                         <button class="dropbtn">Features ▼</button>
                         <div class="dropdown-content">
-                            <a href="/custom-code">✨ Custom Short Codes</a>
-                            <a href="/qr-code">📱 QR Code Generator</a>
-                            <a href="/expiration">⏰ URL Expiration</a>
-                            <a href="/password">🔒 Password Protection</a>
+                            <a href="/feature/custom-code">✨ Custom Short Code</a>
+                            <a href="/feature/qr-code">📱 QR Code</a>
+                            <a href="/feature/expiration">⏰ URL Expiration</a>
+                            <a href="/feature/password">🔒 Password Protection</a>
                         </div>
                     </div>
                     <a href="/about" class="nav-link active">About</a>
@@ -570,7 +734,7 @@ async def about_page(request: Request):
                     <h2>✨ Features</h2>
                     <ul class="feature-list">
                         <li>🔗 <strong>Custom Short Codes</strong> - Create branded, memorable links</li>
-                        <li>📱 <strong>QR Code Generation</strong> - Generate QR codes for any short URL</li>
+                        <li>📱 <strong>QR Code Generation</strong> - Generate QR codes for any URL</li>
                         <li>⏰ <strong>URL Expiration</strong> - Links that auto-expire after a set time</li>
                         <li>🔒 <strong>Password Protection</strong> - Keep sensitive links secure</li>
                         <li>📊 <strong>Analytics Dashboard</strong> - Track clicks and performance</li>
@@ -588,13 +752,6 @@ async def about_page(request: Request):
                         <span class="tech-badge">JavaScript</span>
                         <span class="tech-badge">Render</span>
                     </div>
-                </div>
-
-                <div class="about-card">
-                    <h2>📧 Contact</h2>
-                    <p>Have questions or feedback? Reach out!</p>
-                    <p>Email: <a href="mailto:vaishnavi@linkify.com">vaishnavi@linkify.com</a></p>
-                    <p>GitHub: <a href="https://github.com/Vaishnavi651/linkify" target="_blank">github.com/Vaishnavi651/linkify</a></p>
                 </div>
             </div>
         </div>
@@ -618,7 +775,6 @@ async def create_short_url(url_data: schemas.URLCreate):
     # Use custom code if provided
     if url_data.custom_code:
         short_code = url_data.custom_code
-        # Check if custom code already exists
         existing = await db.urls.find_one({"short_code": short_code})
         if existing:
             raise HTTPException(status_code=400, detail="Custom code already taken")
@@ -629,7 +785,7 @@ async def create_short_url(url_data: schemas.URLCreate):
             short_code = utils.generate_random_code()
             existing = await db.urls.find_one({"short_code": short_code})
     
-    # Create URL document with all features
+    # Create URL document
     url_doc = models.url_document(
         short_code, 
         str(url_data.long_url),
@@ -654,9 +810,19 @@ async def create_short_url(url_data: schemas.URLCreate):
     
     return response
 
+@app.post("/generate-qr")
+async def generate_qr_code_api(data: dict):
+    """Generate QR code for any URL"""
+    url = data.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+    
+    qr_img = generate_qr_code(url)
+    return {"qr_code": f"data:image/png;base64,{qr_img}"}
+
 @app.get("/qr/{short_code}")
-async def get_qr_code(short_code: str):
-    """Generate QR code for a short URL"""
+async def get_qr_code_page(short_code: str):
+    """Get QR code page for a short URL"""
     db = get_db()
     
     url_data = await db.urls.find_one({"short_code": short_code})
@@ -672,73 +838,18 @@ async def get_qr_code(short_code: str):
     <head>
         <title>QR Code - Linkify</title>
         <style>
-            body {{
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                text-align: center;
-                padding: 50px;
-                background: #0a0a0a;
-                color: white;
-            }}
-            .qr-container {{
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                display: inline-block;
-                margin: 20px;
-            }}
-            .info {{
-                margin-top: 20px;
-            }}
-            a {{
-                color: #00d2ff;
-                text-decoration: none;
-                background: rgba(255,255,255,0.1);
-                padding: 10px 20px;
-                border-radius: 10px;
-                display: inline-block;
-                margin-top: 20px;
-            }}
-            a:hover {{
-                background: rgba(255,255,255,0.2);
-            }}
-            .short-url {{
-                font-family: monospace;
-                color: #00d2ff;
-                margin: 10px 0;
-            }}
-            .button-group {{
-                margin-top: 20px;
-            }}
-            .download-btn {{
-                background: #10b981;
-                margin-left: 10px;
-            }}
+            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #0a0a0a; color: white; }}
+            .qr-container {{ background: white; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; }}
+            a {{ color: #00d2ff; text-decoration: none; }}
         </style>
     </head>
     <body>
         <h1>📱 QR Code for your link</h1>
         <div class="qr-container">
-            <img src="data:image/png;base64,{qr_img}" alt="QR Code" id="qr-image">
+            <img src="data:image/png;base64,{qr_img}" alt="QR Code">
         </div>
-        <div class="info">
-            <p class="short-url">🔗 {short_url}</p>
-            <p>Scan this QR code to visit the link instantly!</p>
-            <div class="button-group">
-                <a href="/dashboard">← Back to Dashboard</a>
-                <a href="/" class="download-btn">Home</a>
-            </div>
-        </div>
-        <script>
-            // Add download functionality
-            const qrImage = document.getElementById('qr-image');
-            const downloadBtn = document.createElement('a');
-            downloadBtn.href = qrImage.src;
-            downloadBtn.download = 'qrcode.png';
-            downloadBtn.textContent = '📥 Download QR Code';
-            downloadBtn.className = 'download-btn';
-            downloadBtn.style.marginLeft = '10px';
-            document.querySelector('.button-group').appendChild(downloadBtn);
-        </script>
+        <p>{short_url}</p>
+        <a href="/dashboard">← Back to Dashboard</a>
     </body>
     </html>
     """)
@@ -764,7 +875,7 @@ async def delete_url(short_code: str):
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
-    """Redirect short URL to original URL (with password protection)"""
+    """Redirect short URL to original URL"""
     db = get_db()
     
     url_data = await db.urls.find_one({"short_code": short_code, "is_active": True})
@@ -772,87 +883,31 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
     
-    # Check if URL has expired
     if url_data.get("expires_at") and url_data["expires_at"] < datetime.utcnow():
         raise HTTPException(status_code=410, detail="This link has expired")
     
-    # Check password protection
     if url_data.get("password"):
         if not password:
-            return HTMLResponse(f"""
+            return HTMLResponse("""
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Password Protected Link - Linkify</title>
+                <title>Password Protected - Linkify</title>
                 <style>
-                    body {{
-                        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                        background: #0a0a0a;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        height: 100vh;
-                        margin: 0;
-                    }}
-                    .container {{
-                        background: #111111;
-                        padding: 2rem;
-                        border-radius: 10px;
-                        box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-                        text-align: center;
-                        border: 1px solid #2a2a2a;
-                        max-width: 400px;
-                    }}
-                    h2 {{
-                        color: white;
-                        margin-bottom: 1rem;
-                    }}
-                    p {{
-                        color: #888;
-                        margin-bottom: 1rem;
-                    }}
-                    input {{
-                        padding: 12px;
-                        width: 100%;
-                        margin: 10px 0;
-                        border: 1px solid #2a2a2a;
-                        border-radius: 5px;
-                        background: #1a1a1a;
-                        color: white;
-                        font-size: 16px;
-                        box-sizing: border-box;
-                    }}
-                    button {{
-                        padding: 12px 24px;
-                        background: linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%);
-                        color: white;
-                        border: none;
-                        border-radius: 5px;
-                        cursor: pointer;
-                        font-weight: 600;
-                        width: 100%;
-                        font-size: 16px;
-                    }}
-                    button:hover {{
-                        transform: translateY(-2px);
-                    }}
-                    .back-link {{
-                        margin-top: 1rem;
-                        display: block;
-                        color: #666;
-                        font-size: 14px;
-                    }}
+                    body { font-family: Arial, sans-serif; background: #0a0a0a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                    .container { background: #111; padding: 2rem; border-radius: 10px; text-align: center; border: 1px solid #333; }
+                    input { padding: 10px; width: 200px; margin: 10px; background: #1a1a1a; border: 1px solid #333; color: white; border-radius: 5px; }
+                    button { padding: 10px 20px; background: #00d2ff; color: black; border: none; border-radius: 5px; cursor: pointer; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h2>🔒 Password Protected Link</h2>
-                    <p>This link requires a password to access</p>
                     <form method="get">
                         <input type="password" name="password" placeholder="Enter password" autofocus>
-                        <button type="submit">Unlock Link</button>
+                        <br>
+                        <button type="submit">Unlock</button>
                     </form>
-                    <a href="/" class="back-link">← Back to Home</a>
                 </div>
             </body>
             </html>
@@ -861,18 +916,9 @@ async def redirect_to_url(short_code: str, request: Request, password: str = Non
         if password != url_data["password"]:
             raise HTTPException(status_code=401, detail="Incorrect password")
     
-    # Update click count
     await db.urls.update_one(
         {"short_code": short_code},
         {"$inc": {"clicks": 1}}
     )
-    
-    # Record click event
-    click_doc = models.click_event_document(
-        short_code,
-        request.client.host if request.client else None,
-        request.headers.get("user-agent")
-    )
-    await db.click_events.insert_one(click_doc)
     
     return RedirectResponse(url=url_data["long_url"])
