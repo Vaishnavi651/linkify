@@ -3,164 +3,383 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linkify - Shorten Your URLs</title>
+    <title>Linkify - Smart URL Shortener</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* Auth Card */
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 90vh;
+        }
+
+        .auth-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border-radius: 24px;
+            padding: 48px;
+            width: 100%;
+            max-width: 450px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-icon {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        .logo h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff, #a0a0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 32px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 6px;
+            border-radius: 60px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 60px;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            font-size: 15px;
+            color: white;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .form-group input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 8px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .error-message {
+            background: rgba(255, 82, 82, 0.2);
+            border-left: 3px solid #ff5252;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #ffaaaa;
+            font-size: 13px;
+            display: none;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 3px solid #4caf50;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #a5ffa5;
+            font-size: 13px;
+            display: none;
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 24px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 13px;
+        }
+
+        .auth-footer a {
+            color: #a0a0ff;
+            text-decoration: none;
+        }
+
+        .feature-list {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+
+        .feature-item {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+        }
+
+        .feature-item span {
+            font-size: 20px;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        @media (max-width: 480px) {
+            .auth-card {
+                padding: 32px 24px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="logo">
-                <span class="logo-icon">🔗</span>
-                <span class="logo-text">Linkify</span>
-            </div>
-            <div class="nav-links">
-                <a href="/" class="nav-link active">Home</a>
-                <a href="/dashboard" class="nav-link">Dashboard</a>
-                <div class="dropdown">
-                    <button class="dropbtn">Features ▼</button>
-                    <div class="dropdown-content">
-                        <a href="/feature/custom-code">✨ Custom Short Code</a>
-                        <a href="/feature/qr-code">📱 QR Code</a>
-                        <a href="/feature/expiration">⏰ URL Expiration</a>
-                        <a href="/feature/password">🔒 Password Protection</a>
-                    </div>
+    <div class="container">
+        <div class="auth-container">
+            <div class="auth-card">
+                <div class="logo">
+                    <span class="logo-icon">🔗</span>
+                    <h1>Linkify</h1>
+                    <p>Shorten, Share, Track</p>
                 </div>
-                <a href="/about" class="nav-link">About</a>
-            </div>
-        </div>
-    </nav>
 
-    <section class="hero">
-        <div class="hero-container">
-            <h1 class="hero-title">
-                Shorten Your<br>
-                <span class="gradient-text">Long URLs Instantly</span>
-            </h1>
-            <p class="hero-description">
-                Create short, memorable links that you can share anywhere.
-            </p>
-        </div>
-    </section>
-
-    <section class="shortener-section">
-        <div class="shortener-card">
-            <div class="card-header">
-                <h2>Paste your long URL here</h2>
-                <p>Get a short link in seconds</p>
-            </div>
-            
-            <div class="url-input-group">
-                <input type="url" id="longUrl" placeholder="https://example.com/very/long/url" class="url-input">
-                <button id="shortenBtn" class="shorten-btn">Shorten URL ⚡</button>
-            </div>
-
-            <div id="loading" class="loading" style="display: none;">
-                <div class="spinner"></div>
-                <span>Creating your short link...</span>
-            </div>
-
-            <div id="result" class="result-section" style="display: none;">
-                <div class="result-card">
-                    <div class="result-header">
-                        <span class="success-icon">✅</span>
-                        <h3>Your short URL is ready!</h3>
-                    </div>
-                    <div class="short-url-container">
-                        <input type="text" id="shortUrl" class="short-url-input" readonly>
-                        <button id="copyBtn" class="copy-btn">📋 Copy</button>
-                    </div>
+                <div class="tab-buttons">
+                    <button class="tab-btn active" id="loginTab">Login</button>
+                    <button class="tab-btn" id="signupTab">Sign Up</button>
                 </div>
-            </div>
 
-            <div id="error" class="error-section" style="display: none;">
-                <div class="error-card">
-                    <span class="error-icon">⚠️</span>
-                    <p id="errorMessage" class="error-message"></p>
+                <!-- Login Form -->
+                <div id="loginForm">
+                    <div id="loginError" class="error-message"></div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" id="loginEmail" placeholder="you@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="Enter your password">
+                    </div>
+                    <button class="btn-primary" id="loginBtn">Login →</button>
+                </div>
+
+                <!-- Signup Form (hidden initially) -->
+                <div id="signupForm" style="display: none;">
+                    <div id="signupError" class="error-message"></div>
+                    <div id="signupSuccess" class="success-message"></div>
+                    <div class="form-group">
+                        <label>Email Address</label>
+                        <input type="email" id="signupEmail" placeholder="you@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="signupPassword" placeholder="Create a password (min. 6 characters)">
+                    </div>
+                    <button class="btn-primary" id="signupBtn">Create Account →</button>
+                </div>
+
+                <div class="feature-list">
+                    <div class="feature-item"><span>✨</span> Custom Codes</div>
+                    <div class="feature-item"><span>📱</span> QR Codes</div>
+                    <div class="feature-item"><span>🔒</span> Password Protect</div>
+                    <div class="feature-item"><span>📊</span> Analytics</div>
                 </div>
             </div>
         </div>
-    </section>
-
-    <footer class="footer">
-        <div class="footer-container">
-            <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-        </div>
-    </footer>
+    </div>
 
     <script>
-        const longUrlInput = document.getElementById('longUrl');
-        const shortenBtn = document.getElementById('shortenBtn');
-        const loadingDiv = document.getElementById('loading');
-        const resultDiv = document.getElementById('result');
-        const errorDiv = document.getElementById('error');
-        const shortUrlInput = document.getElementById('shortUrl');
-        const copyBtn = document.getElementById('copyBtn');
-        const errorMessageSpan = document.getElementById('errorMessage');
+        // Tab Switching
+        const loginTab = document.getElementById('loginTab');
+        const signupTab = document.getElementById('signupTab');
+        const loginFormDiv = document.getElementById('loginForm');
+        const signupFormDiv = document.getElementById('signupForm');
 
-        shortenBtn.addEventListener('click', async function() {
-            const longUrl = longUrlInput.value.trim();
+        loginTab.addEventListener('click', () => {
+            loginTab.classList.add('active');
+            signupTab.classList.remove('active');
+            loginFormDiv.style.display = 'block';
+            signupFormDiv.style.display = 'none';
+        });
+
+        signupTab.addEventListener('click', () => {
+            signupTab.classList.add('active');
+            loginTab.classList.remove('active');
+            loginFormDiv.style.display = 'none';
+            signupFormDiv.style.display = 'block';
+        });
+
+        // Login Function
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
             
-            if (!longUrl) {
-                showError('Please enter a URL');
-                return;
-            }
-            
-            try {
-                new URL(longUrl);
-            } catch(e) {
-                showError('Please enter a valid URL (include https://)');
-                return;
-            }
-            
-            resultDiv.style.display = 'none';
             errorDiv.style.display = 'none';
-            loadingDiv.style.display = 'flex';
-            shortenBtn.disabled = true;
+            
+            if (!email || !password) {
+                errorDiv.textContent = 'Please fill in all fields';
+                errorDiv.style.display = 'block';
+                return;
+            }
             
             try {
-                const response = await fetch('/shorten', {
+                const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({long_url: longUrl})
+                    body: JSON.stringify({email, password})
                 });
-                
                 const data = await response.json();
                 
                 if (response.ok) {
-                    shortUrlInput.value = data.short_url;
-                    resultDiv.style.display = 'block';
-                    longUrlInput.value = '';
+                    document.cookie = `token=${data.token}; path=/; max-age=2592000`;
+                    window.location.href = '/dashboard';
                 } else {
-                    showError(data.detail || 'Something went wrong');
+                    errorDiv.textContent = data.detail || 'Login failed';
+                    errorDiv.style.display = 'block';
                 }
-            } catch(error) {
-                showError('Failed to create short URL. Please try again.');
-            } finally {
-                loadingDiv.style.display = 'none';
-                shortenBtn.disabled = false;
+            } catch(err) {
+                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.style.display = 'block';
             }
         });
-        
-        copyBtn.addEventListener('click', async function() {
-            const shortUrl = shortUrlInput.value;
-            if (shortUrl) {
-                await navigator.clipboard.writeText(shortUrl);
-                const originalText = copyBtn.textContent;
-                copyBtn.textContent = '✅ Copied!';
-                setTimeout(() => copyBtn.textContent = originalText, 2000);
+
+        // Signup Function
+        document.getElementById('signupBtn').addEventListener('click', async () => {
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const errorDiv = document.getElementById('signupError');
+            const successDiv = document.getElementById('signupSuccess');
+            
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            
+            if (!email || !password) {
+                errorDiv.textContent = 'Please fill in all fields';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            if (password.length < 6) {
+                errorDiv.textContent = 'Password must be at least 6 characters';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    successDiv.textContent = 'Account created successfully! Please login.';
+                    successDiv.style.display = 'block';
+                    document.getElementById('signupEmail').value = '';
+                    document.getElementById('signupPassword').value = '';
+                    // Switch to login tab after 2 seconds
+                    setTimeout(() => {
+                        loginTab.click();
+                    }, 2000);
+                } else {
+                    errorDiv.textContent = data.detail || 'Signup failed';
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.textContent = 'Signup failed. Please try again.';
+                errorDiv.style.display = 'block';
             }
         });
-        
-        longUrlInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') shortenBtn.click();
+
+        // Enter key support
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('loginBtn').click();
         });
-        
-        function showError(message) {
-            errorMessageSpan.textContent = message;
-            errorDiv.style.display = 'block';
-            setTimeout(() => errorDiv.style.display = 'none', 5000);
-        }
+        document.getElementById('signupPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('signupBtn').click();
+        });
     </script>
 </body>
 </html>
