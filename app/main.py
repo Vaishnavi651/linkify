@@ -1,253 +1,215 @@
-from fastapi import FastAPI, Request, HTTPException, Response, Cookie, Header
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from app import schemas, utils, models
+from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi.responses import RedirectResponse, HTMLResponse
 from app.database import connect_to_mongo, close_mongo_connection, get_db
-from app.config import settings
-from app.qrcode import generate_qr_code
-from app.auth import hash_password, verify_password, generate_session_token
+from app.auth import verify_password, hash_password, generate_session_token
 from datetime import datetime, timedelta
-import json
+import secrets
 
-# Create FastAPI app
-app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
+app = FastAPI()
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
-
-# ============ DATABASE CONNECTION ============
+# Simple in-memory database for testing (remove later)
+users_db = {}
+sessions_db = {}
 
 @app.on_event("startup")
-async def startup_event():
+async def startup():
+    print("Starting up...")
     await connect_to_mongo()
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown():
     await close_mongo_connection()
 
-# ============ AUTH FUNCTIONS ============
-
-async def get_current_user(token: str = None):
-    if not token:
-        return None
-    db = get_db()
-    session = await db.sessions.find_one({"token": token})
-    if not session or session["expires_at"] < datetime.utcnow():
-        return None
-    user = await db.users.find_one({"_id": session["user_id"]})
-    return user
-
-# ============ MAIN PAGES ============
-
+# Homepage
 @app.get("/")
 async def home():
-    with open("app/templates/index.html", "r") as f:
-        content = f.read()
-    return HTMLResponse(content)
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Linkify - Login</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+            .card {
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+                width: 350px;
+            }
+            h1 { text-align: center; color: #333; }
+            input {
+                width: 100%;
+                padding: 10px;
+                margin: 10px 0;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+            }
+            button {
+                width: 100%;
+                padding: 10px;
+                background: #667eea;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                margin-top: 10px;
+            }
+            .error { color: red; text-align: center; margin-top: 10px; display: none; }
+            .tab { display: flex; gap: 10px; margin-bottom: 20px; }
+            .tab button {
+                flex: 1;
+                background: #f0f0f0;
+                color: #333;
+                margin: 0;
+            }
+            .tab button.active { background: #667eea; color: white; }
+            .form { display: none; }
+            .form.active { display: block; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🔗 Linkify</h1>
+            <div class="tab">
+                <button id="loginTab" class="active">Login</button>
+                <button id="signupTab">Sign Up</button>
+            </div>
+            <div id="loginForm" class="form active">
+                <input type="email" id="loginEmail" placeholder="Email">
+                <input type="password" id="loginPassword" placeholder="Password">
+                <button onclick="login()">Login</button>
+                <div id="loginError" class="error"></div>
+            </div>
+            <div id="signupForm" class="form">
+                <input type="email" id="signupEmail" placeholder="Email">
+                <input type="password" id="signupPassword" placeholder="Password">
+                <button onclick="signup()">Sign Up</button>
+                <div id="signupError" class="error"></div>
+            </div>
+        </div>
+        <script>
+            document.getElementById('loginTab').onclick = () => {
+                document.getElementById('loginTab').classList.add('active');
+                document.getElementById('signupTab').classList.remove('active');
+                document.getElementById('loginForm').classList.add('active');
+                document.getElementById('signupForm').classList.remove('active');
+            };
+            document.getElementById('signupTab').onclick = () => {
+                document.getElementById('signupTab').classList.add('active');
+                document.getElementById('loginTab').classList.remove('active');
+                document.getElementById('signupForm').classList.add('active');
+                document.getElementById('loginForm').classList.remove('active');
+            };
+            
+            async function login() {
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/dashboard?token=' + data.token;
+                } else {
+                    document.getElementById('loginError').innerText = data.detail;
+                    document.getElementById('loginError').style.display = 'block';
+                }
+            }
+            
+            async function signup() {
+                const email = document.getElementById('signupEmail').value;
+                const password = document.getElementById('signupPassword').value;
+                const response = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/dashboard?token=' + data.token;
+                } else {
+                    document.getElementById('signupError').innerText = data.detail;
+                    document.getElementById('signupError').style.display = 'block';
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """)
 
+# Dashboard
 @app.get("/dashboard")
 async def dashboard(token: str = None):
-    # Check token from query parameter
     if not token:
-        token = None
-    
-    user = await get_current_user(token)
-    if not user:
-        return RedirectResponse(url="/", status_code=302)
-    
-    db = get_db()
-    user_id = str(user["_id"])
-    urls = await db.urls.find({"user_id": user_id}).sort("created_at", -1).to_list(length=100)
-    
-    # Build URLs HTML
-    urls_html = ""
-    for url in urls:
-        urls_html += f"""
-        <tr>
-            <td><a href="/{url['short_code']}" target="_blank">{settings.BASE_URL}/{url['short_code']}</a></td>
-            <td>{url['long_url'][:50]}{'...' if len(url['long_url']) > 50 else ''}</td>
-            <td><a href="/qr/{url['short_code']}" target="_blank">📱 QR</a></td>
-            <td>{url.get('clicks', 0)}</td>
-            <td><button onclick="deleteURL('{url['short_code']}')" style="background:red;color:white;border:none;padding:5px 10px;border-radius:5px;">Delete</button></td>
-        </tr>
-        """
-    
-    if not urls:
-        urls_html = '<tr><td colspan="5" style="text-align:center">No URLs yet. Create your first one below!</td></tr>'
+        return HTMLResponse("<h1>Not logged in</h1><a href='/'>Go back</a>")
     
     return HTMLResponse(f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Dashboard - Linkify</title>
+        <title>Dashboard</title>
         <style>
-            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
-                font-family: system-ui, sans-serif;
-                background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-                color: white;
+                font-family: Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 20px;
                 min-height: 100vh;
+            }}
+            .container {{
+                max-width: 800px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 10px;
                 padding: 20px;
             }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }}
-            .logo {{ font-size: 28px; font-weight: bold; }}
-            .logout-btn {{ background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 8px; text-decoration: none; color: white; }}
-            .card {{
-                background: rgba(255,255,255,0.1);
-                backdrop-filter: blur(10px);
-                border-radius: 16px;
-                padding: 24px;
-                margin-bottom: 30px;
-            }}
-            input, button {{
-                padding: 12px;
-                border-radius: 8px;
-                border: none;
-                font-size: 14px;
-            }}
-            input {{
-                background: rgba(255,255,255,0.1);
-                color: white;
-                border: 1px solid rgba(255,255,255,0.2);
-                flex: 1;
-            }}
-            button {{
-                background: linear-gradient(135deg, #667eea, #764ba2);
-                color: white;
-                cursor: pointer;
-                font-weight: bold;
-            }}
-            .url-form {{
-                display: flex;
-                gap: 10px;
-                flex-wrap: wrap;
-            }}
-            .url-form input {{
-                flex: 1;
-                min-width: 200px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-            }}
-            th, td {{
-                padding: 12px;
-                text-align: left;
-                border-bottom: 1px solid rgba(255,255,255,0.1);
-            }}
-            th {{
-                background: rgba(255,255,255,0.05);
-            }}
-            a {{ color: #88aaff; text-decoration: none; }}
-            .result {{
-                margin-top: 15px;
-                padding: 10px;
-                background: rgba(0,255,0,0.1);
-                border-radius: 8px;
-                display: none;
-            }}
-            .error {{
-                margin-top: 15px;
-                padding: 10px;
-                background: rgba(255,0,0,0.1);
-                border-radius: 8px;
-                display: none;
-                color: #ff8888;
-            }}
+            h1 {{ color: #333; }}
+            input {{ padding: 10px; width: 70%; margin-right: 10px; }}
+            button {{ padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }}
+            .result {{ margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; display: none; }}
+            .logout {{ float: right; }}
+            .logout a {{ color: #667eea; text-decoration: none; }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <div class="logo">🔗 Linkify</div>
-                <a href="/logout" class="logout-btn">Logout</a>
-            </div>
+            <div class="logout"><a href="/logout">Logout</a></div>
+            <h1>🔗 Linkify Dashboard</h1>
+            <p>Welcome! Your token: <code>{token[:30]}...</code></p>
             
-            <div class="card">
-                <h2>Create New Short URL</h2>
-                <div class="url-form">
-                    <input type="url" id="longUrl" placeholder="https://example.com/your-long-url">
-                    <input type="text" id="customCode" placeholder="Custom code (optional)">
-                    <input type="number" id="expiresDays" placeholder="Expires in days">
-                    <input type="password" id="password" placeholder="Password (optional)">
-                    <button onclick="createShortUrl()">Shorten URL ⚡</button>
-                </div>
-                <div id="result" class="result"></div>
-                <div id="error" class="error"></div>
-            </div>
-            
-            <div class="card">
-                <h2>Your URLs</h2>
-                <table>
-                    <thead>
-                        <tr><th>Short URL</th><th>Original URL</th><th>QR</th><th>Clicks</th><th>Action</th></tr>
-                    </thead>
-                    <tbody id="urlsList">
-                        {urls_html}
-                    </tbody>
-                </table>
-            </div>
+            <h3>Create Short URL</h3>
+            <input type="url" id="url" placeholder="https://example.com/long-url">
+            <button onclick="shorten()">Shorten URL</button>
+            <div id="result" class="result"></div>
         </div>
         
         <script>
-            const token = '{token}' || localStorage.getItem('token');
-            if (!token) {{
-                window.location.href = '/';
-            }}
+            const token = '{token}';
             
-            async function createShortUrl() {{
-                const longUrl = document.getElementById('longUrl').value;
-                const customCode = document.getElementById('customCode').value;
-                const expiresDays = document.getElementById('expiresDays').value;
-                const password = document.getElementById('password').value;
-                const resultDiv = document.getElementById('result');
-                const errorDiv = document.getElementById('error');
-                
-                resultDiv.style.display = 'none';
-                errorDiv.style.display = 'none';
-                
-                if (!longUrl) {{
-                    errorDiv.innerHTML = 'Please enter a URL';
-                    errorDiv.style.display = 'block';
-                    return;
-                }}
-                
-                const body = {{long_url: longUrl}};
-                if (customCode) body.custom_code = customCode;
-                if (expiresDays) body.expires_days = parseInt(expiresDays);
-                if (password) body.password = password;
-                
-                try {{
-                    const response = await fetch('/shorten', {{
-                        method: 'POST',
-                        headers: {{'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}},
-                        body: JSON.stringify(body)
-                    }});
-                    const data = await response.json();
-                    if (response.ok) {{
-                        resultDiv.innerHTML = `✅ Short URL: <a href="${{data.short_url}}" target="_blank">${{data.short_url}}</a>`;
-                        resultDiv.style.display = 'block';
-                        setTimeout(() => location.reload(), 2000);
-                    }} else {{
-                        errorDiv.innerHTML = data.detail || 'Failed';
-                        errorDiv.style.display = 'block';
-                    }}
-                }} catch(err) {{
-                    errorDiv.innerHTML = 'Connection error';
-                    errorDiv.style.display = 'block';
-                }}
-            }}
-            
-            async function deleteURL(shortCode) {{
-                if (confirm('Delete this URL?')) {{
-                    const response = await fetch(`/delete/${{shortCode}}`, {{
-                        method: 'DELETE',
-                        headers: {{'Authorization': 'Bearer ' + token}}
-                    }});
-                    if (response.ok) location.reload();
+            async function shorten() {{
+                const longUrl = document.getElementById('url').value;
+                const response = await fetch('/shorten', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}},
+                    body: JSON.stringify({{long_url: longUrl}})
+                }});
+                const data = await response.json();
+                if (response.ok) {{
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.innerHTML = `✅ Short URL: <a href="${{data.short_url}}" target="_blank">${{data.short_url}}</a>`;
+                    resultDiv.style.display = 'block';
                 }}
             }}
         </script>
@@ -255,122 +217,85 @@ async def dashboard(token: str = None):
     </html>
     """)
 
-# ============ AUTH API ============
-
+# API Endpoints
 @app.post("/api/signup")
-async def signup(user_data: schemas.UserCreate):
+async def signup(data: dict):
     db = get_db()
-    existing = await db.users.find_one({"email": user_data.email})
+    email = data.get("email")
+    password = data.get("password")
+    
+    existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    password_hash = hash_password(user_data.password)
-    user = {"email": user_data.email, "password_hash": password_hash, "created_at": datetime.utcnow(), "is_active": True}
+    password_hash = hash_password(password)
+    user = {"email": email, "password_hash": password_hash, "created_at": datetime.utcnow()}
     result = await db.users.insert_one(user)
-    user_id = str(result.inserted_id)
     
     token = generate_session_token()
-    session = {"user_id": user_id, "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
+    session = {"user_id": str(result.inserted_id), "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
     await db.sessions.insert_one(session)
     
-    return {"message": "User created successfully", "token": token}
+    return {"token": token}
 
 @app.post("/api/login")
-async def login(user_data: schemas.UserLogin):
+async def login(data: dict):
     db = get_db()
-    user = await db.users.find_one({"email": user_data.email})
+    email = data.get("email")
+    password = data.get("password")
+    
+    user = await db.users.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    if not verify_password(user_data.password, user["password_hash"]):
+    if not verify_password(password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = generate_session_token()
     session = {"user_id": str(user["_id"]), "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
     await db.sessions.insert_one(session)
     
-    return {"message": "Login successful", "token": token}
+    return {"token": token}
+
+@app.post("/shorten")
+async def shorten(data: dict, authorization: str = Header(None)):
+    token = authorization.replace("Bearer ", "") if authorization else None
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    db = get_db()
+    session = await db.sessions.find_one({"token": token})
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    import random
+    import string
+    short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    
+    url_doc = {
+        "short_code": short_code,
+        "long_url": data.get("long_url"),
+        "user_id": session["user_id"],
+        "created_at": datetime.utcnow(),
+        "clicks": 0
+    }
+    await db.urls.insert_one(url_doc)
+    
+    return {"short_url": f"https://linkify-1nnz.onrender.com/{short_code}"}
 
 @app.get("/logout")
 async def logout():
     return RedirectResponse(url="/")
-
-# ============ URL API ============
-
-@app.post("/shorten")
-async def create_short_url(url_data: schemas.URLCreate, authorization: str = Header(None)):
-    token = authorization.replace("Bearer ", "") if authorization else None
-    user = await get_current_user(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    db = get_db()
-    user_id = str(user["_id"])
-    
-    if url_data.custom_code:
-        short_code = url_data.custom_code
-        existing = await db.urls.find_one({"short_code": short_code})
-        if existing:
-            raise HTTPException(status_code=400, detail="Custom code already taken")
-    else:
-        short_code = utils.generate_random_code()
-        existing = await db.urls.find_one({"short_code": short_code})
-        while existing:
-            short_code = utils.generate_random_code()
-            existing = await db.urls.find_one({"short_code": short_code})
-    
-    url_doc = models.url_document(short_code, str(url_data.long_url), user_id, url_data.custom_code, url_data.expires_days, url_data.password)
-    await db.urls.insert_one(url_doc)
-    
-    return {"short_code": short_code, "short_url": f"{settings.BASE_URL}/{short_code}", "long_url": str(url_data.long_url), "created_at": url_doc["created_at"], "clicks": 0}
-
-@app.delete("/delete/{short_code}")
-async def delete_url(short_code: str, authorization: str = Header(None)):
-    token = authorization.replace("Bearer ", "") if authorization else None
-    user = await get_current_user(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    db = get_db()
-    url_data = await db.urls.find_one({"short_code": short_code})
-    if not url_data:
-        raise HTTPException(status_code=404, detail="URL not found")
-    if url_data.get("user_id") != str(user["_id"]):
-        raise HTTPException(status_code=403, detail="Not authorized")
-    
-    await db.urls.delete_one({"short_code": short_code})
-    return {"message": "Deleted"}
-
-@app.get("/qr/{short_code}")
-async def get_qr(short_code: str):
-    db = get_db()
-    url_data = await db.urls.find_one({"short_code": short_code})
-    if not url_data:
-        raise HTTPException(status_code=404)
-    short_url = f"{settings.BASE_URL}/{short_code}"
-    qr_img = generate_qr_code(short_url)
-    return HTMLResponse(f"<html><body style='text-align:center;background:#0a0a0a;color:white;'><h1>QR Code</h1><img src='data:image/png;base64,{qr_img}'><p>{short_url}</p><a href='/dashboard'>Back</a></body></html>")
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
 @app.get("/{short_code}")
-async def redirect_to_url(short_code: str, password: str = None):
+async def redirect(short_code: str):
     db = get_db()
-    url_data = await db.urls.find_one({"short_code": short_code, "is_active": True})
-    if not url_data:
-        raise HTTPException(status_code=404, detail="URL not found")
-    if url_data.get("expires_at") and url_data["expires_at"] < datetime.utcnow():
-        raise HTTPException(status_code=410, detail="Link expired")
-    if url_data.get("password"):
-        if not password:
-            return HTMLResponse("""
-            <html><body style="background:#0a0a0a;color:white;display:flex;justify-content:center;align-items:center;height:100vh;">
-            <div style="background:#111;padding:2rem;border-radius:10px;"><h2>🔒 Password Protected</h2>
-            <form method="get"><input type="password" name="password" placeholder="Password"><br><button type="submit">Unlock</button></form></div></body></html>
-            """)
-        if password != url_data["password"]:
-            raise HTTPException(status_code=401, detail="Incorrect password")
+    url = await db.urls.find_one({"short_code": short_code})
+    if not url:
+        return HTMLResponse("URL not found", status_code=404)
     await db.urls.update_one({"short_code": short_code}, {"$inc": {"clicks": 1}})
-    return RedirectResponse(url=url_data["long_url"])
+    return RedirectResponse(url=url["long_url"])
