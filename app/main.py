@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Response, Cookie
+from fastapi import FastAPI, Request, HTTPException, Response, Cookie, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -47,20 +47,20 @@ async def get_current_user(token: str = Cookie(None)):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Serve the homepage - only URL shortener"""
+    """Serve the login/signup page"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, token: str = Cookie(None)):
-    """Dashboard page - shows user's URLs"""
+    """Dashboard page - shows user's URLs with URL shortener"""
     db = get_db()
     
     # Get current user
     user = await get_current_user(token)
     
-    # If not logged in, redirect to login
+    # If not logged in, redirect to home
     if not user:
-        return RedirectResponse(url="/login", status_code=303)
+        return RedirectResponse(url="/", status_code=303)
     
     user_id = str(user["_id"])
     
@@ -111,8 +111,7 @@ async def dashboard(request: Request, token: str = Cookie(None)):
         <div class="empty-state">
             <div class="empty-state-icon">🔗</div>
             <h3>No URLs yet</h3>
-            <p>Create your first short URL on the homepage!</p>
-            <a href="/" class="btn-primary">Go to Homepage</a>
+            <p>Create your first short URL below!</p>
         </div>
         """
     
@@ -134,7 +133,6 @@ async def dashboard(request: Request, token: str = Cookie(None)):
                     <span class="logo-text">Linkify</span>
                 </div>
                 <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
                     <a href="/dashboard" class="nav-link active">Dashboard</a>
                     <div class="dropdown">
                         <button class="dropbtn">Features ▼</button>
@@ -163,6 +161,29 @@ async def dashboard(request: Request, token: str = Cookie(None)):
                     <span class="legend-item">📅 = Has expiration date</span>
                     <span class="legend-item">👁️ = Total clicks</span>
                 </div>
+            </div>
+
+            <!-- URL Shortener Form -->
+            <div class="shortener-card" style="margin-bottom: 2rem;">
+                <div class="card-header">
+                    <h2>Create New Short URL</h2>
+                    <p>Paste your long URL and get a short link</p>
+                </div>
+                <div class="url-input-group">
+                    <input type="url" id="longUrl" placeholder="https://example.com/very/long/url" class="url-input">
+                    <button id="shortenBtn" class="shorten-btn">Shorten URL ⚡</button>
+                </div>
+                <div class="optional-fields" style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <input type="text" id="customCode" placeholder="Custom code (optional)" class="url-input" style="flex: 1;">
+                    <input type="number" id="expiresDays" placeholder="Expires in days" class="url-input" style="flex: 1;">
+                    <input type="password" id="password" placeholder="Password (optional)" class="url-input" style="flex: 1;">
+                </div>
+                <div id="shortenResult" style="display: none; margin-top: 1rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
+                    <p>✅ <strong>Your short URL is ready!</strong></p>
+                    <code id="shortUrlResult" style="color: #00d2ff;"></code>
+                    <button onclick="copyShortUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
+                </div>
+                <div id="shortenError" style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
             </div>
 
             <div class="urls-table">
@@ -205,6 +226,61 @@ async def dashboard(request: Request, token: str = Cookie(None)):
                 }}
             }}
         }}
+
+        // URL Shortener Function
+        document.getElementById('shortenBtn').addEventListener('click', async () => {{
+            const longUrl = document.getElementById('longUrl').value;
+            const customCode = document.getElementById('customCode').value;
+            const expiresDays = document.getElementById('expiresDays').value;
+            const password = document.getElementById('password').value;
+            
+            const resultDiv = document.getElementById('shortenResult');
+            const errorDiv = document.getElementById('shortenError');
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            
+            if (!longUrl) {{
+                errorDiv.innerHTML = 'Please enter a URL';
+                errorDiv.style.display = 'block';
+                return;
+            }}
+            
+            try {{
+                const body = {{long_url: longUrl}};
+                if (customCode) body.custom_code = customCode;
+                if (expiresDays) body.expires_days = parseInt(expiresDays);
+                if (password) body.password = password;
+                
+                const response = await fetch('/shorten', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify(body)
+                }});
+                const data = await response.json();
+                
+                if (response.ok) {{
+                    document.getElementById('shortUrlResult').innerHTML = data.short_url;
+                    resultDiv.style.display = 'block';
+                    document.getElementById('longUrl').value = '';
+                    document.getElementById('customCode').value = '';
+                    document.getElementById('expiresDays').value = '';
+                    document.getElementById('password').value = '';
+                    setTimeout(() => location.reload(), 1500);
+                }} else {{
+                    errorDiv.innerHTML = data.detail || 'Failed to create URL';
+                    errorDiv.style.display = 'block';
+                }}
+            }} catch(err) {{
+                errorDiv.innerHTML = 'Failed to create URL';
+                errorDiv.style.display = 'block';
+            }}
+        }});
+
+        function copyShortUrl() {{
+            const url = document.getElementById('shortUrlResult').innerHTML;
+            navigator.clipboard.writeText(url);
+            alert('✅ Copied to clipboard!');
+        }}
         </script>
     </body>
     </html>
@@ -213,513 +289,36 @@ async def dashboard(request: Request, token: str = Cookie(None)):
 # ============ FEATURE PAGES ============
 
 @app.get("/feature/custom-code", response_class=HTMLResponse)
-async def custom_code_page(request: Request):
+async def custom_code_page(request: Request, token: str = Cookie(None)):
     """Custom short codes feature page with form"""
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Custom Short Code - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
-    </head>
-    <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
-                <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
-                    <a href="/dashboard" class="nav-link">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn active">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code" class="active">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code">📱 QR Code</a>
-                            <a href="/feature/expiration">⏰ URL Expiration</a>
-                            <a href="/feature/password">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link">About</a>
-                    <a href="/login" class="nav-link">Login</a>
-                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
-                </div>
-            </div>
-        </nav>
-
-        <div class="feature-page">
-            <div class="feature-header">
-                <h1>✨ Custom Short Code</h1>
-                <p>Create a memorable, branded link with your own custom code</p>
-            </div>
-
-            <div class="feature-content">
-                <div class="feature-card-large">
-                    <h2>Create Your Custom Short URL</h2>
-                    <form id="shortenForm" class="feature-form">
-                        <div class="form-group">
-                            <label>🔗 Long URL</label>
-                            <input type="url" id="longUrl" placeholder="https://example.com/your-long-url" required>
-                        </div>
-                        <div class="form-group">
-                            <label>✨ Custom Short Code</label>
-                            <input type="text" id="customCode" placeholder="my-custom-link (letters, numbers, hyphens only)" required>
-                            <small>Example: mywebsite, portfolio, link2026</small>
-                        </div>
-                        <button type="submit" class="btn-primary">Create Custom Short URL →</button>
-                    </form>
-                    
-                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
-                        <p>✅ <strong>Your short URL is ready!</strong></p>
-                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
-                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
-                    </div>
-                    
-                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
-                </div>
-
-                <div class="feature-tip">
-                    <strong>💡 Examples of great custom codes:</strong>
-                    <div class="example-list">
-                        <div class="example-item">🔗 linkify.onrender.com/<strong>myportfolio</strong></div>
-                        <div class="example-item">🔗 linkify.onrender.com/<strong>instagram</strong></div>
-                        <div class="example-item">🔗 linkify.onrender.com/<strong>sale2026</strong></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
-
-        <script>
-        document.getElementById('shortenForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const longUrl = document.getElementById('longUrl').value;
-            const customCode = document.getElementById('customCode').value;
-            
-            const resultDiv = document.getElementById('result');
-            const errorDiv = document.getElementById('error');
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            
-            try {
-                const response = await fetch('/shorten', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({long_url: longUrl, custom_code: customCode})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    document.getElementById('shortUrl').innerHTML = data.short_url;
-                    resultDiv.style.display = 'block';
-                    document.getElementById('longUrl').value = '';
-                    document.getElementById('customCode').value = '';
-                } else {
-                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
-                    errorDiv.style.display = 'block';
-                }
-            } catch(err) {
-                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
-                errorDiv.style.display = 'block';
-            }
-        });
-        
-        function copyUrl() {
-            const url = document.getElementById('shortUrl').innerHTML;
-            navigator.clipboard.writeText(url);
-            alert('✅ Copied to clipboard!');
-        }
-        </script>
-    </body>
-    </html>
-    """)
+    user = await get_current_user(token)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("feature_custom_code.html", {"request": request})
 
 @app.get("/feature/qr-code", response_class=HTMLResponse)
-async def qr_code_page(request: Request):
+async def qr_code_page(request: Request, token: str = Cookie(None)):
     """QR Code feature page with form"""
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>QR Code Generator - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
-    </head>
-    <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
-                <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
-                    <a href="/dashboard" class="nav-link">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn active">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code" class="active">📱 QR Code</a>
-                            <a href="/feature/expiration">⏰ URL Expiration</a>
-                            <a href="/feature/password">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link">About</a>
-                    <a href="/login" class="nav-link">Login</a>
-                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
-                </div>
-            </div>
-        </nav>
-
-        <div class="feature-page">
-            <div class="feature-header">
-                <h1>📱 QR Code Generator</h1>
-                <p>Generate QR codes for any URL - perfect for business cards, posters, and more!</p>
-            </div>
-
-            <div class="feature-content">
-                <div class="feature-card-large">
-                    <h2>Generate QR Code</h2>
-                    <form id="qrForm" class="feature-form">
-                        <div class="form-group">
-                            <label>🔗 Enter URL to generate QR code</label>
-                            <input type="url" id="urlInput" placeholder="https://example.com/your-link" required>
-                        </div>
-                        <button type="submit" class="btn-primary">Generate QR Code →</button>
-                    </form>
-                    
-                    <div id="qrResult" style="display: none; margin-top: 2rem; text-align: center;">
-                        <div style="background: white; padding: 1rem; border-radius: 12px; display: inline-block;">
-                            <img id="qrImage" src="" alt="QR Code" style="width: 200px; height: 200px;">
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <button onclick="downloadQR()" class="btn-primary">📥 Download QR Code</button>
-                        </div>
-                    </div>
-                    
-                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
-                </div>
-
-                <div class="feature-tip">
-                    <strong>💡 Perfect for:</strong> Business cards, product packaging, event flyers, social media profiles, restaurant menus
-                </div>
-            </div>
-        </div>
-
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
-
-        <script>
-        document.getElementById('qrForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const url = document.getElementById('urlInput').value;
-            const errorDiv = document.getElementById('error');
-            const qrResult = document.getElementById('qrResult');
-            errorDiv.style.display = 'none';
-            qrResult.style.display = 'none';
-            
-            try {
-                const response = await fetch('/generate-qr', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({url: url})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    document.getElementById('qrImage').src = data.qr_code;
-                    qrResult.style.display = 'block';
-                } else {
-                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
-                    errorDiv.style.display = 'block';
-                }
-            } catch(err) {
-                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to generate QR code';
-                errorDiv.style.display = 'block';
-            }
-        });
-        
-        function downloadQR() {
-            const img = document.getElementById('qrImage');
-            const link = document.createElement('a');
-            link.download = 'qrcode.png';
-            link.href = img.src;
-            link.click();
-        }
-        </script>
-    </body>
-    </html>
-    """)
+    user = await get_current_user(token)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("feature_qr_code.html", {"request": request})
 
 @app.get("/feature/expiration", response_class=HTMLResponse)
-async def expiration_page(request: Request):
+async def expiration_page(request: Request, token: str = Cookie(None)):
     """URL Expiration feature page with form"""
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>URL Expiration - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
-    </head>
-    <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
-                <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
-                    <a href="/dashboard" class="nav-link">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn active">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code">📱 QR Code</a>
-                            <a href="/feature/expiration" class="active">⏰ URL Expiration</a>
-                            <a href="/feature/password">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link">About</a>
-                    <a href="/login" class="nav-link">Login</a>
-                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
-                </div>
-            </div>
-        </nav>
-
-        <div class="feature-page">
-            <div class="feature-header">
-                <h1>⏰ URL Expiration</h1>
-                <p>Create links that automatically expire after a set number of days</p>
-            </div>
-
-            <div class="feature-content">
-                <div class="feature-card-large">
-                    <h2>Create Expiring Link</h2>
-                    <form id="expirationForm" class="feature-form">
-                        <div class="form-group">
-                            <label>🔗 Long URL</label>
-                            <input type="url" id="longUrl" placeholder="https://example.com/your-link" required>
-                        </div>
-                        <div class="form-group">
-                            <label>⏰ Expires in (days)</label>
-                            <input type="number" id="expiresDays" placeholder="7" min="1" max="365" required>
-                            <small>Link will stop working after this many days</small>
-                        </div>
-                        <button type="submit" class="btn-primary">Create Expiring Link →</button>
-                    </form>
-                    
-                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
-                        <p>✅ <strong>Your expiring short URL is ready!</strong></p>
-                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
-                        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #ffa500;">⏰ This link will expire in <span id="expiresIn"></span> days</p>
-                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
-                    </div>
-                    
-                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
-                </div>
-
-                <div class="feature-tip">
-                    <strong>💡 Perfect for:</strong> Limited-time promotions, event invitations, temporary access links, seasonal campaigns
-                </div>
-            </div>
-        </div>
-
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
-
-        <script>
-        document.getElementById('expirationForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const longUrl = document.getElementById('longUrl').value;
-            const expiresDays = document.getElementById('expiresDays').value;
-            
-            const resultDiv = document.getElementById('result');
-            const errorDiv = document.getElementById('error');
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            
-            try {
-                const response = await fetch('/shorten', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({long_url: longUrl, expires_days: parseInt(expiresDays)})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    document.getElementById('shortUrl').innerHTML = data.short_url;
-                    document.getElementById('expiresIn').innerHTML = expiresDays;
-                    resultDiv.style.display = 'block';
-                    document.getElementById('longUrl').value = '';
-                    document.getElementById('expiresDays').value = '';
-                } else {
-                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
-                    errorDiv.style.display = 'block';
-                }
-            } catch(err) {
-                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
-                errorDiv.style.display = 'block';
-            }
-        });
-        
-        function copyUrl() {
-            const url = document.getElementById('shortUrl').innerHTML;
-            navigator.clipboard.writeText(url);
-            alert('✅ Copied to clipboard!');
-        }
-        </script>
-    </body>
-    </html>
-    """)
+    user = await get_current_user(token)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("feature_expiration.html", {"request": request})
 
 @app.get("/feature/password", response_class=HTMLResponse)
-async def password_page(request: Request):
+async def password_page(request: Request, token: str = Cookie(None)):
     """Password Protection feature page with form"""
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Protection - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
-    </head>
-    <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo">
-                    <span class="logo-icon">🔗</span>
-                    <span class="logo-text">Linkify</span>
-                </div>
-                <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
-                    <a href="/dashboard" class="nav-link">Dashboard</a>
-                    <div class="dropdown">
-                        <button class="dropbtn active">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code">📱 QR Code</a>
-                            <a href="/feature/expiration">⏰ URL Expiration</a>
-                            <a href="/feature/password" class="active">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link">About</a>
-                    <a href="/login" class="nav-link">Login</a>
-                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
-                </div>
-            </div>
-        </nav>
-
-        <div class="feature-page">
-            <div class="feature-header">
-                <h1>🔒 Password Protection</h1>
-                <p>Keep your links secure with password protection</p>
-            </div>
-
-            <div class="feature-content">
-                <div class="feature-card-large">
-                    <h2>Create Password-Protected Link</h2>
-                    <form id="passwordForm" class="feature-form">
-                        <div class="form-group">
-                            <label>🔗 Long URL</label>
-                            <input type="url" id="longUrl" placeholder="https://example.com/your-link" required>
-                        </div>
-                        <div class="form-group">
-                            <label>🔒 Password</label>
-                            <input type="password" id="password" placeholder="Enter a strong password" required>
-                            <small>Visitors will need this password to access the link</small>
-                        </div>
-                        <button type="submit" class="btn-primary">Create Protected Link →</button>
-                    </form>
-                    
-                    <div id="result" style="display: none; margin-top: 2rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
-                        <p>✅ <strong>Your password-protected short URL is ready!</strong></p>
-                        <code id="shortUrl" style="color: #00d2ff; word-break: break-all;"></code>
-                        <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #ffa500;">🔒 This link is password protected. Share the password separately!</p>
-                        <button onclick="copyUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
-                    </div>
-                    
-                    <div id="error" style="display: none; margin-top: 2rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
-                </div>
-
-                <div class="feature-tip">
-                    <strong>💡 Security Tips:</strong>
-                    <ul style="margin-top: 0.5rem; color: #888;">
-                        <li>Use strong passwords with letters, numbers, and symbols</li>
-                        <li>Share the password separately from the link</li>
-                        <li>Perfect for private documents, personal photos, confidential information</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
-
-        <script>
-        document.getElementById('passwordForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const longUrl = document.getElementById('longUrl').value;
-            const password = document.getElementById('password').value;
-            
-            const resultDiv = document.getElementById('result');
-            const errorDiv = document.getElementById('error');
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            
-            try {
-                const response = await fetch('/shorten', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({long_url: longUrl, password: password})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    document.getElementById('shortUrl').innerHTML = data.short_url;
-                    resultDiv.style.display = 'block';
-                    document.getElementById('longUrl').value = '';
-                    document.getElementById('password').value = '';
-                } else {
-                    errorDiv.innerHTML = '<strong>⚠️ Error:</strong> ' + data.detail;
-                    errorDiv.style.display = 'block';
-                }
-            } catch(err) {
-                errorDiv.innerHTML = '<strong>⚠️ Error:</strong> Failed to create URL';
-                errorDiv.style.display = 'block';
-            }
-        });
-        
-        function copyUrl() {
-            const url = document.getElementById('shortUrl').innerHTML;
-            navigator.clipboard.writeText(url);
-            alert('✅ Copied to clipboard!');
-        }
-        </script>
-    </body>
-    </html>
-    """)
+    user = await get_current_user(token)
+    if not user:
+        return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse("feature_password.html", {"request": request})
 
 @app.get("/about", response_class=HTMLResponse)
 async def about_page(request: Request):
@@ -742,7 +341,6 @@ async def about_page(request: Request):
                     <span class="logo-text">Linkify</span>
                 </div>
                 <div class="nav-links">
-                    <a href="/" class="nav-link">Home</a>
                     <a href="/dashboard" class="nav-link">Dashboard</a>
                     <div class="dropdown">
                         <button class="dropbtn">Features ▼</button>
@@ -754,8 +352,7 @@ async def about_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link active">About</a>
-                    <a href="/login" class="nav-link">Login</a>
-                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
+                    <a href="/logout" class="logout-btn">Logout</a>
                 </div>
             </div>
         </nav>
@@ -807,41 +404,17 @@ async def about_page(request: Request):
     </html>
     """)
 
-# ============ AUTH PAGES ============
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    """Login page"""
-    return templates.TemplateResponse("login.html", {"request": request})
-
-@app.get("/signup", response_class=HTMLResponse)
-async def signup_page(request: Request):
-    """Signup page"""
-    return templates.TemplateResponse("signup.html", {"request": request})
-
-@app.get("/logout")
-async def logout(token: str = Cookie(None)):
-    """Logout user"""
-    if token:
-        db = get_db()
-        await db.sessions.delete_one({"token": token})
-    response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie("token")
-    return response
-
-# ============ API ENDPOINTS ============
+# ============ AUTH API ============
 
 @app.post("/api/signup")
 async def signup(user_data: schemas.UserCreate):
     """Create a new user account"""
     db = get_db()
     
-    # Check if user exists
     existing = await db.users.find_one({"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Hash password and create user
     password_hash = hash_password(user_data.password)
     user = {
         "email": user_data.email,
@@ -853,7 +426,6 @@ async def signup(user_data: schemas.UserCreate):
     result = await db.users.insert_one(user)
     user_id = str(result.inserted_id)
     
-    # Create session token
     token = generate_session_token()
     session = {
         "user_id": user_id,
@@ -870,16 +442,13 @@ async def login(user_data: schemas.UserLogin):
     """Login user"""
     db = get_db()
     
-    # Find user
     user = await db.users.find_one({"email": user_data.email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # Verify password
     if not verify_password(user_data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # Create session token
     token = generate_session_token()
     session = {
         "user_id": str(user["_id"]),
@@ -891,16 +460,29 @@ async def login(user_data: schemas.UserLogin):
     
     return {"message": "Login successful", "token": token}
 
+@app.get("/logout")
+async def logout(token: str = Cookie(None)):
+    """Logout user"""
+    if token:
+        db = get_db()
+        await db.sessions.delete_one({"token": token})
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie("token")
+    return response
+
+# ============ URL API ============
+
 @app.post("/shorten")
 async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None)):
-    """Create a shortened URL with custom code, expiration, password"""
+    """Create a shortened URL"""
     db = get_db()
     
-    # Get current user
     user = await get_current_user(token)
     user_id = str(user["_id"]) if user else None
     
-    # Use custom code if provided
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     if url_data.custom_code:
         short_code = url_data.custom_code
         existing = await db.urls.find_one({"short_code": short_code})
@@ -913,7 +495,6 @@ async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None
             short_code = utils.generate_random_code()
             existing = await db.urls.find_one({"short_code": short_code})
     
-    # Create URL document
     url_doc = models.url_document(
         short_code, 
         str(url_data.long_url),
@@ -924,20 +505,13 @@ async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None
     )
     await db.urls.insert_one(url_doc)
     
-    response = {
+    return {
         "short_code": short_code,
         "short_url": f"{settings.BASE_URL}/{short_code}",
         "long_url": str(url_data.long_url),
         "created_at": url_doc["created_at"],
         "clicks": 0
     }
-    
-    if url_doc.get("expires_at"):
-        response["expires_at"] = url_doc["expires_at"]
-    if url_doc.get("is_password_protected"):
-        response["is_password_protected"] = True
-    
-    return response
 
 @app.post("/generate-qr")
 async def generate_qr_code_api(data: dict):
@@ -990,53 +564,42 @@ async def health_check():
 
 @app.delete("/delete/{short_code}")
 async def delete_url(short_code: str, token: str = Cookie(None)):
-    """Delete a short URL (only if owned by user)"""
+    """Delete a short URL"""
     db = get_db()
     
-    # Get current user
     user = await get_current_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     user_id = str(user["_id"])
     
-    # Find the URL and verify ownership
     url_data = await db.urls.find_one({"short_code": short_code})
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
     
     if url_data.get("user_id") != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this URL")
+        raise HTTPException(status_code=403, detail="Not authorized")
     
-    result = await db.urls.delete_one({"short_code": short_code})
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="URL not found")
-    
+    await db.urls.delete_one({"short_code": short_code})
     await db.click_events.delete_many({"short_code": short_code})
     
-    return {"message": f"URL {short_code} deleted successfully"}
+    return {"message": "URL deleted successfully"}
 
 # ============ SEO ROUTES ============
 
 @app.get("/robots.txt")
 async def robots():
-    """Robots.txt for search engines"""
     content = """User-agent: *
 Allow: /
 Disallow: /dashboard
-Disallow: /login
-Disallow: /signup
-Disallow: /delete/
 Disallow: /api/
-
+Disallow: /delete/
 Sitemap: https://linkify-1nnz.onrender.com/sitemap.xml
 """
     return Response(content=content, media_type="text/plain")
 
 @app.get("/sitemap.xml")
 async def sitemap():
-    """Sitemap for search engines"""
     content = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
@@ -1051,34 +614,10 @@ async def sitemap():
         <changefreq>monthly</changefreq>
         <priority>0.8</priority>
     </url>
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/feature/custom-code</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
-    </url>
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/feature/qr-code</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
-    </url>
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/feature/expiration</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
-    </url>
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/feature/password</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.7</priority>
-    </url>
 </urlset>"""
     return Response(content=content, media_type="application/xml")
 
-# ============ REDIRECT ENDPOINT ============
+# ============ REDIRECT ============
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
