@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Linkify</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon">🔗</span>
+                <span class="logo-text">Linkify</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Home</a>
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <div class="dropdown">
+                    <button class="dropbtn">Features ▼</button>
+                    <div class="dropdown-content">
+                        <a href="/feature/custom-code">✨ Custom Short Code</a>
+                        <a href="/feature/qr-code">📱 QR Code</a>
+                        <a href="/feature/expiration">⏰ URL Expiration</a>
+                        <a href="/feature/password">🔒 Password Protection</a>
+                    </div>
+                </div>
+                <a href="/about" class="nav-link">About</a>
+                <a href="/login" class="nav-link">Login</a>
+                <a href="/signup" class="nav-link signup-btn active">Sign Up Free</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="auth-page">
+        <div class="auth-card">
+            <h1>Create Account</h1>
+            <p>Start shortening URLs for free</p>
+            
+            <form id="signupForm" class="auth-form">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" placeholder="you@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="Create a strong password" required>
+                </div>
+                <button type="submit" class="btn-primary">Sign Up →</button>
+            </form>
+            
+            <div id="error" style="display: none; margin-top: 1rem; padding: 0.75rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
+            
+            <div class="auth-footer">
+                <p>Already have an account? <a href="/login">Log in</a></p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('signupForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            errorDiv.style.display = 'none';
+            
+            if (password.length < 6) {
+                errorDiv.innerHTML = 'Password must be at least 6 characters';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, password})
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    alert('Account created successfully! Please log in.');
+                    window.location.href = '/login';
+                } else {
+                    errorDiv.innerHTML = data.detail || 'Sign up failed';
+                    errorDiv.style.display = 'block';
+                }
+            } catch(err) {
+                errorDiv.innerHTML = 'Sign up failed. Please try again.';
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

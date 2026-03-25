@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /login
+Disallow: /signup
+Disallow: /delete/
+Disallow: /api/
+
+Sitemap: https://linkify-1nnz.onrender.com/sitemap.xml
