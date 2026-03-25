@@ -170,22 +170,27 @@ async def dashboard(request: Request):
             if (expiresDays) body.expires_days = parseInt(expiresDays);
             if (password) body.password = password;
             
-            const response = await fetch('/shorten', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify(body)
-            }});
-            const data = await response.json();
-            if (response.ok) {{
-                document.getElementById('shortUrlResult').innerHTML = data.short_url;
-                resultDiv.style.display = 'block';
-                document.getElementById('longUrl').value = '';
-                document.getElementById('customCode').value = '';
-                document.getElementById('expiresDays').value = '';
-                document.getElementById('password').value = '';
-                setTimeout(() => location.reload(), 1500);
-            }} else {{
-                errorDiv.innerHTML = data.detail || 'Failed';
+            try {{
+                const response = await fetch('/shorten', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify(body)
+                }});
+                const data = await response.json();
+                if (response.ok) {{
+                    document.getElementById('shortUrlResult').innerHTML = data.short_url;
+                    resultDiv.style.display = 'block';
+                    document.getElementById('longUrl').value = '';
+                    document.getElementById('customCode').value = '';
+                    document.getElementById('expiresDays').value = '';
+                    document.getElementById('password').value = '';
+                    setTimeout(() => location.reload(), 1500);
+                }} else {{
+                    errorDiv.innerHTML = data.detail || 'Failed to create URL';
+                    errorDiv.style.display = 'block';
+                }}
+            }} catch(err) {{
+                errorDiv.innerHTML = 'Connection error. Please try again.';
                 errorDiv.style.display = 'block';
             }}
         }});
