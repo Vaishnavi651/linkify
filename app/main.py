@@ -178,7 +178,7 @@ async def dashboard(request: Request):
     </html>
     """)
 
-# ============ FEATURE PAGES (Each with its own form) ============
+# ============ FEATURE PAGES ============
 
 @app.get("/feature/custom-code", response_class=HTMLResponse)
 async def custom_code_page(request: Request):
@@ -854,10 +854,12 @@ async def get_qr_code_page(short_code: str):
     </html>
     """)
 
+# ============ FIXED HEALTH ENDPOINT - TINY RESPONSE ============
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for uptime monitoring"""
-    return {"status": "alive", "service": "Linkify"}
+    return {"status": "ok"}
 
 @app.delete("/delete/{short_code}")
 async def delete_url(short_code: str):
