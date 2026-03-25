@@ -92,6 +92,12 @@
     </div>
 
     <script>
+        // Check if already logged in
+        const savedToken = localStorage.getItem('token');
+        if (savedToken) {
+            window.location.href = '/dashboard';
+        }
+
         const loginTab = document.getElementById('loginTab');
         const signupTab = document.getElementById('signupTab');
         const loginForm = document.getElementById('loginForm');
@@ -170,11 +176,16 @@
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    successDiv.textContent = 'Account created successfully! Please login.';
+                    successDiv.textContent = 'Account created! Please login.';
                     successDiv.style.display = 'block';
                     document.getElementById('signupEmail').value = '';
                     document.getElementById('signupPassword').value = '';
-                    setTimeout(() => loginTab.click(), 2000);
+                    setTimeout(() => {
+                        loginTab.click();
+                        document.getElementById('loginEmail').value = email;
+                        document.getElementById('loginPassword').value = password;
+                        document.getElementById('loginBtn').click();
+                    }, 2000);
                 } else {
                     errorDiv.textContent = data.detail || 'Signup failed';
                     errorDiv.style.display = 'block';
