@@ -8,14 +8,13 @@ from app.config import settings
 from app.qrcode import generate_qr_code
 from app.auth import hash_password, verify_password, generate_session_token
 from datetime import datetime, timedelta
+import json
 
 # Create FastAPI app
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 
-# Mount static files (CSS, JS)
+# Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
-# Set up templates
 templates = Jinja2Templates(directory="app/templates")
 
 # ============ DATABASE CONNECTION ============
@@ -30,244 +29,230 @@ async def shutdown_event():
 
 # ============ AUTH FUNCTIONS ============
 
-async def get_current_user_from_token(token: str):
-    """Get current user from session token"""
+async def get_current_user(token: str = None):
     if not token:
         return None
-    
     db = get_db()
     session = await db.sessions.find_one({"token": token})
     if not session or session["expires_at"] < datetime.utcnow():
         return None
-    
     user = await db.users.find_one({"_id": session["user_id"]})
     return user
 
 # ============ MAIN PAGES ============
 
-@app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    """Serve the login/signup page"""
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/")
+async def home():
+    with open("app/templates/index.html", "r") as f:
+        content = f.read()
+    return HTMLResponse(content)
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, token: str = None):
-    """Dashboard page - shows user's URLs"""
-    db = get_db()
-    
-    # Get token from query parameter or header
+@app.get("/dashboard")
+async def dashboard(token: str = None):
+    # Check token from query parameter
     if not token:
-        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        token = None
     
-    user = await get_current_user_from_token(token)
-    
+    user = await get_current_user(token)
     if not user:
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Not Authorized</title>
-            <script>
-                localStorage.removeItem('token');
-                window.location.href = '/';
-            </script>
-        </head>
-        <body>Redirecting...</body>
-        </html>
-        """, status_code=401)
+        return RedirectResponse(url="/", status_code=302)
     
+    db = get_db()
     user_id = str(user["_id"])
     urls = await db.urls.find({"user_id": user_id}).sort("created_at", -1).to_list(length=100)
     
+    # Build URLs HTML
     urls_html = ""
     for url in urls:
-        qr_link = f"/qr/{url['short_code']}"
-        
         urls_html += f"""
-        <div class="url-row" id="row-{url['short_code']}">
-            <div class="short-url-col">
-                <a href="/{url['short_code']}" target="_blank" class="short-url-link">
-                    {settings.BASE_URL}/{url['short_code']}
-                </a>
-                <div class="url-actions">
-                    <a href="{qr_link}" target="_blank" class="action-btn qr-btn">📱 QR Code</a>
-                    <button onclick="deleteURL('{url['short_code']}')" class="action-btn delete-btn">🗑️ Delete</button>
-                </div>
-            </div>
-            <div class="long-url">{url['long_url'][:60]}{'...' if len(url['long_url']) > 60 else ''}</div>
-            <div class="clicks-count">👁️ {url.get('clicks', 0)} clicks</div>
-            <div class="created-date">📅 {url['created_at'].strftime('%Y-%m-%d')}</div>
-        </div>
+        <tr>
+            <td><a href="/{url['short_code']}" target="_blank">{settings.BASE_URL}/{url['short_code']}</a></td>
+            <td>{url['long_url'][:50]}{'...' if len(url['long_url']) > 50 else ''}</td>
+            <td><a href="/qr/{url['short_code']}" target="_blank">📱 QR</a></td>
+            <td>{url.get('clicks', 0)}</td>
+            <td><button onclick="deleteURL('{url['short_code']}')" style="background:red;color:white;border:none;padding:5px 10px;border-radius:5px;">Delete</button></td>
+        </tr>
         """
     
     if not urls:
-        urls_html = '<div class="empty-state"><div class="empty-state-icon">🔗</div><h3>No URLs yet</h3><p>Create your first short URL below!</p></div>'
+        urls_html = '<tr><td colspan="5" style="text-align:center">No URLs yet. Create your first one below!</td></tr>'
     
     return HTMLResponse(f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Dashboard - Linkify</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="/static/css/style.css">
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: system-ui, sans-serif;
+                background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+                color: white;
+                min-height: 100vh;
+                padding: 20px;
+            }}
+            .container {{ max-width: 1200px; margin: 0 auto; }}
+            .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }}
+            .logo {{ font-size: 28px; font-weight: bold; }}
+            .logout-btn {{ background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 8px; text-decoration: none; color: white; }}
+            .card {{
+                background: rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 16px;
+                padding: 24px;
+                margin-bottom: 30px;
+            }}
+            input, button {{
+                padding: 12px;
+                border-radius: 8px;
+                border: none;
+                font-size: 14px;
+            }}
+            input {{
+                background: rgba(255,255,255,0.1);
+                color: white;
+                border: 1px solid rgba(255,255,255,0.2);
+                flex: 1;
+            }}
+            button {{
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                cursor: pointer;
+                font-weight: bold;
+            }}
+            .url-form {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }}
+            .url-form input {{
+                flex: 1;
+                min-width: 200px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            th, td {{
+                padding: 12px;
+                text-align: left;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
+            th {{
+                background: rgba(255,255,255,0.05);
+            }}
+            a {{ color: #88aaff; text-decoration: none; }}
+            .result {{
+                margin-top: 15px;
+                padding: 10px;
+                background: rgba(0,255,0,0.1);
+                border-radius: 8px;
+                display: none;
+            }}
+            .error {{
+                margin-top: 15px;
+                padding: 10px;
+                background: rgba(255,0,0,0.1);
+                border-radius: 8px;
+                display: none;
+                color: #ff8888;
+            }}
+        </style>
     </head>
     <body>
-        <nav class="navbar">
-            <div class="nav-container">
-                <div class="logo"><span class="logo-icon">🔗</span><span class="logo-text">Linkify</span></div>
-                <div class="nav-links">
-                    <a href="/dashboard" class="nav-link active">Dashboard</a>
-                    <div class="dropdown"><button class="dropbtn">Features ▼</button>
-                        <div class="dropdown-content">
-                            <a href="/feature/custom-code">✨ Custom Short Code</a>
-                            <a href="/feature/qr-code">📱 QR Code</a>
-                            <a href="/feature/expiration">⏰ URL Expiration</a>
-                            <a href="/feature/password">🔒 Password Protection</a>
-                        </div>
-                    </div>
-                    <a href="/about" class="nav-link">About</a>
-                    <div class="user-info"><span class="user-email">{user['email']}</span><button onclick="logout()" class="logout-btn">Logout</button></div>
-                </div>
+        <div class="container">
+            <div class="header">
+                <div class="logo">🔗 Linkify</div>
+                <a href="/logout" class="logout-btn">Logout</a>
             </div>
-        </nav>
-
-        <div class="dashboard-container">
-            <div class="dashboard-header">
-                <h1>📊 Your URLs</h1>
-                <p>Track and manage all your shortened links</p>
+            
+            <div class="card">
+                <h2>Create New Short URL</h2>
+                <div class="url-form">
+                    <input type="url" id="longUrl" placeholder="https://example.com/your-long-url">
+                    <input type="text" id="customCode" placeholder="Custom code (optional)">
+                    <input type="number" id="expiresDays" placeholder="Expires in days">
+                    <input type="password" id="password" placeholder="Password (optional)">
+                    <button onclick="createShortUrl()">Shorten URL ⚡</button>
+                </div>
+                <div id="result" class="result"></div>
+                <div id="error" class="error"></div>
             </div>
-
-            <div class="shortener-card" style="margin-bottom: 2rem;">
-                <div class="card-header"><h2>Create New Short URL</h2><p>Paste your long URL and get a short link</p></div>
-                <div class="url-input-group">
-                    <input type="url" id="longUrl" placeholder="https://example.com/very/long/url" class="url-input">
-                    <button id="shortenBtn" class="shorten-btn">Shorten URL ⚡</button>
-                </div>
-                <div class="optional-fields" style="display: flex; gap: 1rem; margin-top: 1rem;">
-                    <input type="text" id="customCode" placeholder="Custom code (optional)" class="url-input" style="flex:1">
-                    <input type="number" id="expiresDays" placeholder="Expires in days" class="url-input" style="flex:1">
-                    <input type="password" id="password" placeholder="Password (optional)" class="url-input" style="flex:1">
-                </div>
-                <div id="shortenResult" style="display: none; margin-top: 1rem; padding: 1rem; background: #1a1a1a; border-radius: 8px;">
-                    <p>✅ <strong>Your short URL is ready!</strong></p>
-                    <code id="shortUrlResult" style="color: #00d2ff;"></code>
-                    <button onclick="copyShortUrl()" class="copy-btn" style="margin-left: 1rem;">📋 Copy</button>
-                </div>
-                <div id="shortenError" style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff8888;"></div>
-            </div>
-
-            <div class="urls-table">
-                <div class="table-header"><div>Short URL</div><div>Original URL</div><div>Clicks</div><div>Created</div></div>
-                {urls_html}
+            
+            <div class="card">
+                <h2>Your URLs</h2>
+                <table>
+                    <thead>
+                        <tr><th>Short URL</th><th>Original URL</th><th>QR</th><th>Clicks</th><th>Action</th></tr>
+                    </thead>
+                    <tbody id="urlsList">
+                        {urls_html}
+                    </tbody>
+                </table>
             </div>
         </div>
-
-        <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify - Make your links shorter and smarter</p></div></footer>
-
+        
         <script>
-        const token = localStorage.getItem('token');
-        if (!token) {{
-            window.location.href = '/';
-        }}
-
-        async function deleteURL(shortCode) {{
-            if (confirm('Delete this URL?')) {{
-                const response = await fetch(`/delete/${{shortCode}}`, {{
-                    method: 'DELETE',
-                    headers: {{'Authorization': `Bearer ${{token}}`}}
-                }});
-                if (response.ok) location.reload();
-            }}
-        }}
-
-        document.getElementById('shortenBtn').addEventListener('click', async () => {{
-            const longUrl = document.getElementById('longUrl').value;
-            const customCode = document.getElementById('customCode').value;
-            const expiresDays = document.getElementById('expiresDays').value;
-            const password = document.getElementById('password').value;
-            
-            if (!longUrl) {{
-                document.getElementById('shortenError').innerHTML = 'Please enter a URL';
-                document.getElementById('shortenError').style.display = 'block';
-                return;
+            const token = '{token}' || localStorage.getItem('token');
+            if (!token) {{
+                window.location.href = '/';
             }}
             
-            const body = {{long_url: longUrl}};
-            if (customCode) body.custom_code = customCode;
-            if (expiresDays) body.expires_days = parseInt(expiresDays);
-            if (password) body.password = password;
-            
-            const response = await fetch('/shorten', {{
-                method: 'POST',
-                headers: {{'Content-Type': 'application/json', 'Authorization': `Bearer ${{token}}`}},
-                body: JSON.stringify(body)
-            }});
-            const data = await response.json();
-            if (response.ok) {{
-                document.getElementById('shortUrlResult').innerHTML = data.short_url;
-                document.getElementById('shortenResult').style.display = 'block';
-                document.getElementById('longUrl').value = '';
-                document.getElementById('customCode').value = '';
-                document.getElementById('expiresDays').value = '';
-                document.getElementById('password').value = '';
-                setTimeout(() => location.reload(), 1500);
-            }} else {{
-                document.getElementById('shortenError').innerHTML = data.detail || 'Failed';
-                document.getElementById('shortenError').style.display = 'block';
+            async function createShortUrl() {{
+                const longUrl = document.getElementById('longUrl').value;
+                const customCode = document.getElementById('customCode').value;
+                const expiresDays = document.getElementById('expiresDays').value;
+                const password = document.getElementById('password').value;
+                const resultDiv = document.getElementById('result');
+                const errorDiv = document.getElementById('error');
+                
+                resultDiv.style.display = 'none';
+                errorDiv.style.display = 'none';
+                
+                if (!longUrl) {{
+                    errorDiv.innerHTML = 'Please enter a URL';
+                    errorDiv.style.display = 'block';
+                    return;
+                }}
+                
+                const body = {{long_url: longUrl}};
+                if (customCode) body.custom_code = customCode;
+                if (expiresDays) body.expires_days = parseInt(expiresDays);
+                if (password) body.password = password;
+                
+                try {{
+                    const response = await fetch('/shorten', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}},
+                        body: JSON.stringify(body)
+                    }});
+                    const data = await response.json();
+                    if (response.ok) {{
+                        resultDiv.innerHTML = `✅ Short URL: <a href="${{data.short_url}}" target="_blank">${{data.short_url}}</a>`;
+                        resultDiv.style.display = 'block';
+                        setTimeout(() => location.reload(), 2000);
+                    }} else {{
+                        errorDiv.innerHTML = data.detail || 'Failed';
+                        errorDiv.style.display = 'block';
+                    }}
+                }} catch(err) {{
+                    errorDiv.innerHTML = 'Connection error';
+                    errorDiv.style.display = 'block';
+                }}
             }}
-        }});
-
-        function copyShortUrl() {{
-            navigator.clipboard.writeText(document.getElementById('shortUrlResult').innerHTML);
-            alert('✅ Copied!');
-        }}
-
-        function logout() {{
-            localStorage.removeItem('token');
-            window.location.href = '/';
-        }}
+            
+            async function deleteURL(shortCode) {{
+                if (confirm('Delete this URL?')) {{
+                    const response = await fetch(`/delete/${{shortCode}}`, {{
+                        method: 'DELETE',
+                        headers: {{'Authorization': 'Bearer ' + token}}
+                    }});
+                    if (response.ok) location.reload();
+                }}
+            }}
         </script>
     </body>
     </html>
-    """)
-
-# ============ FEATURE PAGES ============
-
-@app.get("/feature/custom-code", response_class=HTMLResponse)
-async def custom_code_page(request: Request):
-    return templates.TemplateResponse("feature_custom_code.html", {"request": request})
-
-@app.get("/feature/qr-code", response_class=HTMLResponse)
-async def qr_code_page(request: Request):
-    return templates.TemplateResponse("feature_qr_code.html", {"request": request})
-
-@app.get("/feature/expiration", response_class=HTMLResponse)
-async def expiration_page(request: Request):
-    return templates.TemplateResponse("feature_expiration.html", {"request": request})
-
-@app.get("/feature/password", response_class=HTMLResponse)
-async def password_page(request: Request):
-    return templates.TemplateResponse("feature_password.html", {"request": request})
-
-@app.get("/about", response_class=HTMLResponse)
-async def about_page(request: Request):
-    return HTMLResponse("""
-    <!DOCTYPE html>
-    <html><head><title>About</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css"></head>
-    <body><nav class="navbar"><div class="nav-container"><div class="logo"><span class="logo-icon">🔗</span><span class="logo-text">Linkify</span></div>
-    <div class="nav-links"><a href="/dashboard" class="nav-link">Dashboard</a><div class="dropdown"><button class="dropbtn">Features ▼</button>
-    <div class="dropdown-content"><a href="/feature/custom-code">✨ Custom Short Code</a><a href="/feature/qr-code">📱 QR Code</a>
-    <a href="/feature/expiration">⏰ URL Expiration</a><a href="/feature/password">🔒 Password Protection</a></div></div>
-    <a href="/about" class="nav-link active">About</a><button onclick="logout()" class="logout-btn">Logout</button></div></div></nav>
-    <div class="about-page"><div class="about-header"><h1>About Linkify</h1><p>Professional URL Shortener</p></div>
-    <div class="about-card"><h2>🚀 What is Linkify?</h2><p>Linkify helps you create short, memorable links that you can share anywhere.</p></div>
-    <div class="about-card"><h2>✨ Features</h2><ul><li>✨ Custom Short Codes</li><li>📱 QR Code Generation</li><li>⏰ URL Expiration</li><li>🔒 Password Protection</li><li>📊 Analytics Dashboard</li></ul></div></div>
-    <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify</p></div></footer>
-    <script>function logout(){localStorage.removeItem('token');window.location.href='/';}</script>
-    </body></html>
     """)
 
 # ============ AUTH API ============
@@ -306,38 +291,43 @@ async def login(user_data: schemas.UserLogin):
     
     return {"message": "Login successful", "token": token}
 
+@app.get("/logout")
+async def logout():
+    return RedirectResponse(url="/")
+
 # ============ URL API ============
 
 @app.post("/shorten")
 async def create_short_url(url_data: schemas.URLCreate, authorization: str = Header(None)):
     token = authorization.replace("Bearer ", "") if authorization else None
-    user = await get_current_user_from_token(token)
+    user = await get_current_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
+    db = get_db()
     user_id = str(user["_id"])
     
     if url_data.custom_code:
         short_code = url_data.custom_code
-        existing = await get_db().urls.find_one({"short_code": short_code})
+        existing = await db.urls.find_one({"short_code": short_code})
         if existing:
             raise HTTPException(status_code=400, detail="Custom code already taken")
     else:
         short_code = utils.generate_random_code()
-        existing = await get_db().urls.find_one({"short_code": short_code})
+        existing = await db.urls.find_one({"short_code": short_code})
         while existing:
             short_code = utils.generate_random_code()
-            existing = await get_db().urls.find_one({"short_code": short_code})
+            existing = await db.urls.find_one({"short_code": short_code})
     
     url_doc = models.url_document(short_code, str(url_data.long_url), user_id, url_data.custom_code, url_data.expires_days, url_data.password)
-    await get_db().urls.insert_one(url_doc)
+    await db.urls.insert_one(url_doc)
     
     return {"short_code": short_code, "short_url": f"{settings.BASE_URL}/{short_code}", "long_url": str(url_data.long_url), "created_at": url_doc["created_at"], "clicks": 0}
 
 @app.delete("/delete/{short_code}")
 async def delete_url(short_code: str, authorization: str = Header(None)):
     token = authorization.replace("Bearer ", "") if authorization else None
-    user = await get_current_user_from_token(token)
+    user = await get_current_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -351,30 +341,22 @@ async def delete_url(short_code: str, authorization: str = Header(None)):
     await db.urls.delete_one({"short_code": short_code})
     return {"message": "Deleted"}
 
-@app.post("/generate-qr")
-async def generate_qr_code_api(data: dict):
-    url = data.get("url")
-    if not url:
-        raise HTTPException(status_code=400, detail="URL is required")
-    qr_img = generate_qr_code(url)
-    return {"qr_code": f"data:image/png;base64,{qr_img}"}
-
 @app.get("/qr/{short_code}")
-async def get_qr_code_page(short_code: str):
+async def get_qr(short_code: str):
     db = get_db()
     url_data = await db.urls.find_one({"short_code": short_code})
     if not url_data:
-        raise HTTPException(status_code=404, detail="URL not found")
+        raise HTTPException(status_code=404)
     short_url = f"{settings.BASE_URL}/{short_code}"
     qr_img = generate_qr_code(short_url)
     return HTMLResponse(f"<html><body style='text-align:center;background:#0a0a0a;color:white;'><h1>QR Code</h1><img src='data:image/png;base64,{qr_img}'><p>{short_url}</p><a href='/dashboard'>Back</a></body></html>")
 
 @app.get("/health")
-async def health_check():
+async def health():
     return {"status": "ok"}
 
 @app.get("/{short_code}")
-async def redirect_to_url(short_code: str, request: Request, password: str = None):
+async def redirect_to_url(short_code: str, password: str = None):
     db = get_db()
     url_data = await db.urls.find_one({"short_code": short_code, "is_active": True})
     if not url_data:
