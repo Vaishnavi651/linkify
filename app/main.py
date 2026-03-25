@@ -5,6 +5,7 @@ from app.auth import verify_password, hash_password, generate_session_token
 from datetime import datetime, timedelta
 import random
 import string
+from bson import ObjectId
 
 app = FastAPI()
 
@@ -17,7 +18,11 @@ async def startup():
 async def shutdown():
     await close_mongo_connection()
 
-# Homepage - Login/Signup
+# Helper to convert ObjectId to string
+def str_id(obj_id):
+    return str(obj_id)
+
+# Homepage
 @app.get("/")
 async def home():
     return HTMLResponse("""
@@ -44,23 +49,9 @@ async def home():
                 max-width: 400px;
                 box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             }
-            h1 {
-                text-align: center;
-                color: #333;
-                margin-bottom: 10px;
-                font-size: 32px;
-            }
-            .subtitle {
-                text-align: center;
-                color: #666;
-                margin-bottom: 30px;
-                font-size: 14px;
-            }
-            .tabs {
-                display: flex;
-                gap: 10px;
-                margin-bottom: 30px;
-            }
+            h1 { text-align: center; color: #333; margin-bottom: 10px; font-size: 32px; }
+            .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }
+            .tabs { display: flex; gap: 10px; margin-bottom: 30px; }
             .tab {
                 flex: 1;
                 padding: 12px;
@@ -71,16 +62,9 @@ async def home():
                 font-size: 16px;
                 font-weight: 600;
             }
-            .tab.active {
-                background: linear-gradient(135deg, #667eea, #764ba2);
-                color: white;
-            }
-            .form {
-                display: none;
-            }
-            .form.active {
-                display: block;
-            }
+            .tab.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+            .form { display: none; }
+            .form.active { display: block; }
             input {
                 width: 100%;
                 padding: 12px;
@@ -101,20 +85,8 @@ async def home():
                 cursor: pointer;
                 margin-top: 20px;
             }
-            .error {
-                color: #e74c3c;
-                text-align: center;
-                margin-top: 15px;
-                font-size: 14px;
-                display: none;
-            }
-            .success {
-                color: #27ae60;
-                text-align: center;
-                margin-top: 15px;
-                font-size: 14px;
-                display: none;
-            }
+            .error { color: #e74c3c; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
+            .success { color: #27ae60; text-align: center; margin-top: 15px; font-size: 14px; display: none; }
             .features {
                 display: flex;
                 justify-content: space-between;
@@ -122,16 +94,8 @@ async def home():
                 padding-top: 20px;
                 border-top: 1px solid #eee;
             }
-            .feature {
-                text-align: center;
-                font-size: 12px;
-                color: #888;
-            }
-            .feature span {
-                font-size: 24px;
-                display: block;
-                margin-bottom: 5px;
-            }
+            .feature { text-align: center; font-size: 12px; color: #888; }
+            .feature span { font-size: 24px; display: block; margin-bottom: 5px; }
         </style>
     </head>
     <body>
@@ -272,18 +236,34 @@ async def dashboard(token: str = None):
     if not token:
         return HTMLResponse("<h1>No token provided</h1><a href='/'>Go back</a>")
     
-    # Verify token
+    print(f"Dashboard called with token: {token[:20]}...")
+    
     db = get_db()
     session = await db.sessions.find_one({"token": token})
-    if not session:
-        return HTMLResponse("<h1>Invalid or expired token</h1><a href='/'>Go back</a>")
     
-    user = await db.users.find_one({"_id": session["user_id"]})
+    if not session:
+        print("Session not found")
+        return HTMLResponse("<h1>Invalid session token</h1><a href='/'>Go back</a>")
+    
+    print(f"Session found: user_id = {session['user_id']}")
+    
+    # Convert user_id string to ObjectId for MongoDB query
+    try:
+        user_id_obj = ObjectId(session["user_id"])
+    except:
+        print(f"Invalid user_id format: {session['user_id']}")
+        return HTMLResponse("<h1>Invalid user ID format</h1><a href='/'>Go back</a>")
+    
+    user = await db.users.find_one({"_id": user_id_obj})
+    
     if not user:
+        print(f"User not found with _id: {session['user_id']}")
         return HTMLResponse("<h1>User not found</h1><a href='/'>Go back</a>")
     
+    print(f"User found: {user['email']}")
+    
     # Get user's URLs
-    urls = await db.urls.find({"user_id": str(user["_id"])}).sort("created_at", -1).to_list(length=100)
+    urls = await db.urls.find({"user_id": session["user_id"]}).sort("created_at", -1).to_list(length=100)
     
     urls_html = ""
     for url in urls:
@@ -422,9 +402,10 @@ async def signup(data: dict):
     password_hash = hash_password(password)
     user = {"email": email, "password_hash": password_hash, "created_at": datetime.utcnow()}
     result = await db.users.insert_one(user)
+    user_id = str(result.inserted_id)
     
     token = generate_session_token()
-    session = {"user_id": str(result.inserted_id), "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
+    session = {"user_id": user_id, "token": token, "created_at": datetime.utcnow(), "expires_at": datetime.utcnow() + timedelta(days=30)}
     await db.sessions.insert_one(session)
     
     return {"token": token}
