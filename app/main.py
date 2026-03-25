@@ -3,13 +3,10 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from app.database import connect_to_mongo, close_mongo_connection, get_db
 from app.auth import verify_password, hash_password, generate_session_token
 from datetime import datetime, timedelta
-import secrets
+import random
+import string
 
 app = FastAPI()
-
-# Simple in-memory database for testing (remove later)
-users_db = {}
-sessions_db = {}
 
 @app.on_event("startup")
 async def startup():
@@ -20,7 +17,7 @@ async def startup():
 async def shutdown():
     await close_mongo_connection()
 
-# Homepage
+# Homepage - Login/Signup
 @app.get("/")
 async def home():
     return HTMLResponse("""
@@ -29,120 +26,239 @@ async def home():
     <head>
         <title>Linkify - Login</title>
         <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
-                font-family: Arial, sans-serif;
+                font-family: system-ui, -apple-system, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                height: 100vh;
-                margin: 0;
+                padding: 20px;
             }
             .card {
                 background: white;
+                border-radius: 20px;
                 padding: 40px;
-                border-radius: 10px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-                width: 350px;
+                width: 100%;
+                max-width: 400px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             }
-            h1 { text-align: center; color: #333; }
+            h1 {
+                text-align: center;
+                color: #333;
+                margin-bottom: 10px;
+                font-size: 32px;
+            }
+            .subtitle {
+                text-align: center;
+                color: #666;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            .tabs {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 30px;
+            }
+            .tab {
+                flex: 1;
+                padding: 12px;
+                background: #f0f0f0;
+                border: none;
+                border-radius: 10px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .tab.active {
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+            }
+            .form {
+                display: none;
+            }
+            .form.active {
+                display: block;
+            }
             input {
                 width: 100%;
-                padding: 10px;
+                padding: 12px;
                 margin: 10px 0;
                 border: 1px solid #ddd;
-                border-radius: 5px;
+                border-radius: 8px;
+                font-size: 14px;
             }
             button {
                 width: 100%;
-                padding: 10px;
-                background: #667eea;
+                padding: 12px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
                 color: white;
                 border: none;
-                border-radius: 5px;
+                border-radius: 8px;
+                font-size: 16px;
+                font-weight: 600;
                 cursor: pointer;
-                margin-top: 10px;
+                margin-top: 20px;
             }
-            .error { color: red; text-align: center; margin-top: 10px; display: none; }
-            .tab { display: flex; gap: 10px; margin-bottom: 20px; }
-            .tab button {
-                flex: 1;
-                background: #f0f0f0;
-                color: #333;
-                margin: 0;
+            .error {
+                color: #e74c3c;
+                text-align: center;
+                margin-top: 15px;
+                font-size: 14px;
+                display: none;
             }
-            .tab button.active { background: #667eea; color: white; }
-            .form { display: none; }
-            .form.active { display: block; }
+            .success {
+                color: #27ae60;
+                text-align: center;
+                margin-top: 15px;
+                font-size: 14px;
+                display: none;
+            }
+            .features {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+            }
+            .feature {
+                text-align: center;
+                font-size: 12px;
+                color: #888;
+            }
+            .feature span {
+                font-size: 24px;
+                display: block;
+                margin-bottom: 5px;
+            }
         </style>
     </head>
     <body>
         <div class="card">
             <h1>🔗 Linkify</h1>
-            <div class="tab">
-                <button id="loginTab" class="active">Login</button>
-                <button id="signupTab">Sign Up</button>
+            <div class="subtitle">Shorten, Share, Track</div>
+            
+            <div class="tabs">
+                <button class="tab active" id="loginTab">Login</button>
+                <button class="tab" id="signupTab">Sign Up</button>
             </div>
+            
             <div id="loginForm" class="form active">
-                <input type="email" id="loginEmail" placeholder="Email">
+                <input type="email" id="loginEmail" placeholder="Email address">
                 <input type="password" id="loginPassword" placeholder="Password">
-                <button onclick="login()">Login</button>
+                <button onclick="login()">Login →</button>
                 <div id="loginError" class="error"></div>
             </div>
+            
             <div id="signupForm" class="form">
-                <input type="email" id="signupEmail" placeholder="Email">
-                <input type="password" id="signupPassword" placeholder="Password">
-                <button onclick="signup()">Sign Up</button>
+                <input type="email" id="signupEmail" placeholder="Email address">
+                <input type="password" id="signupPassword" placeholder="Password (min 6 characters)">
+                <button onclick="signup()">Create Account →</button>
                 <div id="signupError" class="error"></div>
+                <div id="signupSuccess" class="success"></div>
+            </div>
+            
+            <div class="features">
+                <div class="feature"><span>✨</span> Custom Codes</div>
+                <div class="feature"><span>📱</span> QR Codes</div>
+                <div class="feature"><span>🔒</span> Password Protect</div>
+                <div class="feature"><span>📊</span> Analytics</div>
             </div>
         </div>
+        
         <script>
-            document.getElementById('loginTab').onclick = () => {
-                document.getElementById('loginTab').classList.add('active');
-                document.getElementById('signupTab').classList.remove('active');
-                document.getElementById('loginForm').classList.add('active');
-                document.getElementById('signupForm').classList.remove('active');
-            };
-            document.getElementById('signupTab').onclick = () => {
-                document.getElementById('signupTab').classList.add('active');
-                document.getElementById('loginTab').classList.remove('active');
-                document.getElementById('signupForm').classList.add('active');
-                document.getElementById('loginForm').classList.remove('active');
-            };
+            function setActiveTab(tab) {
+                if (tab === 'login') {
+                    document.getElementById('loginTab').classList.add('active');
+                    document.getElementById('signupTab').classList.remove('active');
+                    document.getElementById('loginForm').classList.add('active');
+                    document.getElementById('signupForm').classList.remove('active');
+                } else {
+                    document.getElementById('signupTab').classList.add('active');
+                    document.getElementById('loginTab').classList.remove('active');
+                    document.getElementById('signupForm').classList.add('active');
+                    document.getElementById('loginForm').classList.remove('active');
+                }
+            }
+            
+            document.getElementById('loginTab').onclick = () => setActiveTab('login');
+            document.getElementById('signupTab').onclick = () => setActiveTab('signup');
             
             async function login() {
                 const email = document.getElementById('loginEmail').value;
                 const password = document.getElementById('loginPassword').value;
-                const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({email, password})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    localStorage.setItem('token', data.token);
-                    window.location.href = '/dashboard?token=' + data.token;
-                } else {
-                    document.getElementById('loginError').innerText = data.detail;
-                    document.getElementById('loginError').style.display = 'block';
+                const errorDiv = document.getElementById('loginError');
+                errorDiv.style.display = 'none';
+                
+                if (!email || !password) {
+                    errorDiv.textContent = 'Please fill all fields';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({email, password})
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        localStorage.setItem('token', data.token);
+                        window.location.href = '/dashboard?token=' + data.token;
+                    } else {
+                        errorDiv.textContent = data.detail || 'Login failed';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (err) {
+                    errorDiv.textContent = 'Connection error';
+                    errorDiv.style.display = 'block';
                 }
             }
             
             async function signup() {
                 const email = document.getElementById('signupEmail').value;
                 const password = document.getElementById('signupPassword').value;
-                const response = await fetch('/api/signup', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({email, password})
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    localStorage.setItem('token', data.token);
-                    window.location.href = '/dashboard?token=' + data.token;
-                } else {
-                    document.getElementById('signupError').innerText = data.detail;
-                    document.getElementById('signupError').style.display = 'block';
+                const errorDiv = document.getElementById('signupError');
+                const successDiv = document.getElementById('signupSuccess');
+                errorDiv.style.display = 'none';
+                successDiv.style.display = 'none';
+                
+                if (!email || !password) {
+                    errorDiv.textContent = 'Please fill all fields';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                if (password.length < 6) {
+                    errorDiv.textContent = 'Password must be at least 6 characters';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/signup', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({email, password})
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        successDiv.textContent = 'Account created! Logging you in...';
+                        successDiv.style.display = 'block';
+                        localStorage.setItem('token', data.token);
+                        setTimeout(() => {
+                            window.location.href = '/dashboard?token=' + data.token;
+                        }, 1000);
+                    } else {
+                        errorDiv.textContent = data.detail || 'Signup failed';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (err) {
+                    errorDiv.textContent = 'Connection error';
+                    errorDiv.style.display = 'block';
                 }
             }
         </script>
@@ -150,56 +266,128 @@ async def home():
     </html>
     """)
 
-# Dashboard
+# Dashboard Page
 @app.get("/dashboard")
 async def dashboard(token: str = None):
     if not token:
-        return HTMLResponse("<h1>Not logged in</h1><a href='/'>Go back</a>")
+        return HTMLResponse("<h1>No token provided</h1><a href='/'>Go back</a>")
+    
+    # Verify token
+    db = get_db()
+    session = await db.sessions.find_one({"token": token})
+    if not session:
+        return HTMLResponse("<h1>Invalid or expired token</h1><a href='/'>Go back</a>")
+    
+    user = await db.users.find_one({"_id": session["user_id"]})
+    if not user:
+        return HTMLResponse("<h1>User not found</h1><a href='/'>Go back</a>")
+    
+    # Get user's URLs
+    urls = await db.urls.find({"user_id": str(user["_id"])}).sort("created_at", -1).to_list(length=100)
+    
+    urls_html = ""
+    for url in urls:
+        urls_html += f"""
+        <div style="border-bottom:1px solid #eee; padding:10px;">
+            <a href="/{url['short_code']}" target="_blank" style="color:#667eea;">https://linkify-1nnz.onrender.com/{url['short_code']}</a>
+            <span style="color:#888; margin-left:10px;">{url['long_url'][:50]}</span>
+            <span style="float:right;">👁️ {url.get('clicks', 0)}</span>
+        </div>
+        """
+    
+    if not urls:
+        urls_html = '<div style="padding:20px; text-align:center; color:#888;">No URLs yet. Create your first one below!</div>'
     
     return HTMLResponse(f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Dashboard</title>
+        <title>Dashboard - Linkify</title>
         <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
-                font-family: Arial, sans-serif;
+                font-family: system-ui, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 20px;
                 min-height: 100vh;
+                padding: 20px;
             }}
             .container {{
                 max-width: 800px;
                 margin: 0 auto;
-                background: white;
-                border-radius: 10px;
-                padding: 20px;
             }}
-            h1 {{ color: #333; }}
-            input {{ padding: 10px; width: 70%; margin-right: 10px; }}
-            button {{ padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; }}
-            .result {{ margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; display: none; }}
-            .logout {{ float: right; }}
-            .logout a {{ color: #667eea; text-decoration: none; }}
+            .card {{
+                background: white;
+                border-radius: 20px;
+                padding: 30px;
+                margin-bottom: 20px;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            }}
+            h1 {{ margin-bottom: 10px; }}
+            .email {{ color: #667eea; margin-bottom: 20px; }}
+            input {{
+                padding: 12px;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                width: 70%;
+                margin-right: 10px;
+            }}
+            button {{
+                padding: 12px 24px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+            }}
+            .logout {{
+                float: right;
+                background: #e74c3c;
+                padding: 8px 16px;
+                border-radius: 8px;
+                color: white;
+                text-decoration: none;
+            }}
+            .result {{
+                margin-top: 15px;
+                padding: 12px;
+                background: #e8f5e9;
+                border-radius: 8px;
+                display: none;
+            }}
         </style>
     </head>
     <body>
         <div class="container">
-            <div class="logout"><a href="/logout">Logout</a></div>
-            <h1>🔗 Linkify Dashboard</h1>
-            <p>Welcome! Your token: <code>{token[:30]}...</code></p>
+            <div class="card">
+                <a href="/logout" class="logout">Logout</a>
+                <h1>🔗 Linkify Dashboard</h1>
+                <p class="email">Welcome, <strong>{user['email']}</strong>!</p>
+                
+                <div style="margin: 20px 0;">
+                    <input type="url" id="longUrl" placeholder="https://example.com/your-long-url">
+                    <button onclick="shorten()">Shorten URL ⚡</button>
+                </div>
+                <div id="result" class="result"></div>
+            </div>
             
-            <h3>Create Short URL</h3>
-            <input type="url" id="url" placeholder="https://example.com/long-url">
-            <button onclick="shorten()">Shorten URL</button>
-            <div id="result" class="result"></div>
+            <div class="card">
+                <h3>Your Short URLs</h3>
+                <div style="margin-top: 15px;">
+                    {urls_html}
+                </div>
+            </div>
         </div>
         
         <script>
             const token = '{token}';
             
             async function shorten() {{
-                const longUrl = document.getElementById('url').value;
+                const longUrl = document.getElementById('longUrl').value;
+                if (!longUrl) {{
+                    alert('Please enter a URL');
+                    return;
+                }}
+                
                 const response = await fetch('/shorten', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}},
@@ -208,8 +396,11 @@ async def dashboard(token: str = None):
                 const data = await response.json();
                 if (response.ok) {{
                     const resultDiv = document.getElementById('result');
-                    resultDiv.innerHTML = `✅ Short URL: <a href="${{data.short_url}}" target="_blank">${{data.short_url}}</a>`;
+                    resultDiv.innerHTML = `✅ Short URL created: <a href="${{data.short_url}}" target="_blank">${{data.short_url}}</a>`;
                     resultDiv.style.display = 'block';
+                    setTimeout(() => location.reload(), 2000);
+                }} else {{
+                    alert(data.detail || 'Failed to shorten URL');
                 }}
             }}
         </script>
@@ -268,8 +459,6 @@ async def shorten(data: dict, authorization: str = Header(None)):
     if not session:
         raise HTTPException(status_code=401, detail="Invalid session")
     
-    import random
-    import string
     short_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
     
     url_doc = {
