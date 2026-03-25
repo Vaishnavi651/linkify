@@ -68,7 +68,7 @@ body {
     color: #00d2ff;
 }
 
-/* Dropdown Menu */
+/* Dropdown Menu - FIXED */
 .dropdown {
     position: relative;
     display: inline-block;
@@ -82,7 +82,7 @@ body {
     font-size: 1rem;
     cursor: pointer;
     font-family: 'Inter', sans-serif;
-    padding: 0;
+    padding: 0.5rem 0;
     transition: color 0.3s;
 }
 
@@ -97,10 +97,10 @@ body {
     background: #111111;
     min-width: 220px;
     box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-    z-index: 1;
+    z-index: 1001;
     border-radius: 8px;
     border: 1px solid #2a2a2a;
-    top: 30px;
+    top: 35px;
     left: -20px;
 }
 
@@ -111,6 +111,7 @@ body {
     display: block;
     transition: all 0.3s;
     font-size: 0.9rem;
+    white-space: nowrap;
 }
 
 .dropdown-content a:hover {
@@ -123,6 +124,7 @@ body {
     background: #1a1a1a;
 }
 
+/* Show dropdown on hover */
 .dropdown:hover .dropdown-content {
     display: block;
 }
@@ -739,6 +741,44 @@ body {
     border: 1px solid #2a2a2a;
 }
 
+/* Form Styles for Feature Pages */
+.feature-form {
+    margin-top: 1rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: white;
+    font-weight: 500;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 1rem;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #00d2ff;
+}
+
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: #666;
+    font-size: 0.8rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .hero-title {
@@ -784,6 +824,13 @@ body {
     }
     
     .dropdown-content {
-        left: -50px;
+        left: 50%;
+        transform: translateX(-50%);
+        top: 40px;
+    }
+    
+    .dropdown-content a {
+        white-space: normal;
+        text-align: center;
     }
 }
