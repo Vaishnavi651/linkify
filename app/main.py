@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, Response, Cookie
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app import schemas, utils, models
@@ -290,7 +290,6 @@ async def dashboard(request: Request, token: str = Cookie(None)):
 
 @app.get("/feature/custom-code", response_class=HTMLResponse)
 async def custom_code_page(request: Request, token: str = Cookie(None)):
-    """Custom short codes feature page with form"""
     user = await get_current_user(token)
     if not user:
         return RedirectResponse(url="/", status_code=303)
@@ -298,7 +297,6 @@ async def custom_code_page(request: Request, token: str = Cookie(None)):
 
 @app.get("/feature/qr-code", response_class=HTMLResponse)
 async def qr_code_page(request: Request, token: str = Cookie(None)):
-    """QR Code feature page with form"""
     user = await get_current_user(token)
     if not user:
         return RedirectResponse(url="/", status_code=303)
@@ -306,7 +304,6 @@ async def qr_code_page(request: Request, token: str = Cookie(None)):
 
 @app.get("/feature/expiration", response_class=HTMLResponse)
 async def expiration_page(request: Request, token: str = Cookie(None)):
-    """URL Expiration feature page with form"""
     user = await get_current_user(token)
     if not user:
         return RedirectResponse(url="/", status_code=303)
@@ -314,7 +311,6 @@ async def expiration_page(request: Request, token: str = Cookie(None)):
 
 @app.get("/feature/password", response_class=HTMLResponse)
 async def password_page(request: Request, token: str = Cookie(None)):
-    """Password Protection feature page with form"""
     user = await get_current_user(token)
     if not user:
         return RedirectResponse(url="/", status_code=303)
@@ -322,7 +318,6 @@ async def password_page(request: Request, token: str = Cookie(None)):
 
 @app.get("/about", response_class=HTMLResponse)
 async def about_page(request: Request):
-    """About page"""
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
@@ -356,50 +351,23 @@ async def about_page(request: Request):
                 </div>
             </div>
         </nav>
-
         <div class="about-page">
             <div class="about-header">
                 <h1>About Linkify</h1>
                 <p>Professional URL Shortener Service</p>
             </div>
-
             <div class="about-content">
                 <div class="about-card">
                     <h2>🚀 What is Linkify?</h2>
-                    <p>Linkify is a professional URL shortener that helps you create short, memorable links that you can share anywhere. Track clicks, analyze traffic, and optimize your content with our powerful features.</p>
+                    <p>Linkify is a professional URL shortener that helps you create short, memorable links that you can share anywhere.</p>
                 </div>
-
                 <div class="about-card">
                     <h2>✨ Features</h2>
-                    <ul class="feature-list">
-                        <li>🔗 <strong>Custom Short Codes</strong> - Create branded, memorable links</li>
-                        <li>📱 <strong>QR Code Generation</strong> - Generate QR codes for any URL</li>
-                        <li>⏰ <strong>URL Expiration</strong> - Links that auto-expire after a set time</li>
-                        <li>🔒 <strong>Password Protection</strong> - Keep sensitive links secure</li>
-                        <li>📊 <strong>Analytics Dashboard</strong> - Track clicks and performance</li>
-                        <li>⚡ <strong>Lightning Fast</strong> - Sub-50ms redirect latency</li>
-                    </ul>
-                </div>
-
-                <div class="about-card">
-                    <h2>🛠️ Built With</h2>
-                    <div class="tech-stack">
-                        <span class="tech-badge">FastAPI</span>
-                        <span class="tech-badge">MongoDB</span>
-                        <span class="tech-badge">Python</span>
-                        <span class="tech-badge">HTML5/CSS3</span>
-                        <span class="tech-badge">JavaScript</span>
-                        <span class="tech-badge">Render</span>
-                    </div>
+                    <ul><li>🔗 Custom Short Codes</li><li>📱 QR Code Generation</li><li>⏰ URL Expiration</li><li>🔒 Password Protection</li><li>📊 Analytics Dashboard</li></ul>
                 </div>
             </div>
         </div>
-
-        <footer class="footer">
-            <div class="footer-container">
-                <p>&copy; 2026 Linkify - Make your links shorter and smarter</p>
-            </div>
-        </footer>
+        <footer class="footer"><div class="footer-container"><p>&copy; 2026 Linkify</p></div></footer>
     </body>
     </html>
     """)
@@ -439,22 +407,18 @@ async def signup(user_data: schemas.UserCreate):
 
 @app.post("/api/login")
 async def login(user_data: schemas.UserLogin):
-    """Login user"""
+    """Login user and set cookie"""
     db = get_db()
     
     user = await db.users.find_one({"email": user_data.email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Verify password
     is_valid = verify_password(user_data.password, user["password_hash"])
     if not is_valid:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    # Generate session token
     token = generate_session_token()
-    
-    # Store session
     session = {
         "user_id": str(user["_id"]),
         "token": token,
@@ -463,18 +427,13 @@ async def login(user_data: schemas.UserLogin):
     }
     await db.sessions.insert_one(session)
     
-    return {
-        "message": "Login successful", 
-        "token": token,
-        "user": {
-            "email": user["email"],
-            "id": str(user["_id"])
-        }
-    }
+    # Return JSON response with cookie header
+    response = JSONResponse(content={"message": "Login successful", "token": token})
+    response.set_cookie(key="token", value=token, httponly=True, max_age=2592000, path="/")
+    return response
 
 @app.get("/logout")
 async def logout(token: str = Cookie(None)):
-    """Logout user"""
     if token:
         db = get_db()
         await db.sessions.delete_one({"token": token})
@@ -486,12 +445,9 @@ async def logout(token: str = Cookie(None)):
 
 @app.post("/shorten")
 async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None)):
-    """Create a shortened URL"""
     db = get_db()
-    
     user = await get_current_user(token)
     user_id = str(user["_id"]) if user else None
-    
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
@@ -507,14 +463,7 @@ async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None
             short_code = utils.generate_random_code()
             existing = await db.urls.find_one({"short_code": short_code})
     
-    url_doc = models.url_document(
-        short_code, 
-        str(url_data.long_url),
-        user_id,
-        url_data.custom_code,
-        url_data.expires_days,
-        url_data.password
-    )
+    url_doc = models.url_document(short_code, str(url_data.long_url), user_id, url_data.custom_code, url_data.expires_days, url_data.password)
     await db.urls.insert_one(url_doc)
     
     return {
@@ -527,156 +476,75 @@ async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None
 
 @app.post("/generate-qr")
 async def generate_qr_code_api(data: dict):
-    """Generate QR code for any URL"""
     url = data.get("url")
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
-    
     qr_img = generate_qr_code(url)
     return {"qr_code": f"data:image/png;base64,{qr_img}"}
 
 @app.get("/qr/{short_code}")
 async def get_qr_code_page(short_code: str):
-    """Get QR code page for a short URL"""
     db = get_db()
-    
     url_data = await db.urls.find_one({"short_code": short_code})
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
-    
     short_url = f"{settings.BASE_URL}/{short_code}"
     qr_img = generate_qr_code(short_url)
-    
     return HTMLResponse(f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>QR Code - Linkify</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #0a0a0a; color: white; }}
-            .qr-container {{ background: white; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; }}
-            a {{ color: #00d2ff; text-decoration: none; }}
-        </style>
-    </head>
-    <body>
-        <h1>📱 QR Code for your link</h1>
-        <div class="qr-container">
-            <img src="data:image/png;base64,{qr_img}" alt="QR Code">
-        </div>
-        <p>{short_url}</p>
-        <a href="/dashboard">← Back to Dashboard</a>
-    </body>
-    </html>
+    <!DOCTYPE html><html><head><title>QR Code</title></head>
+    <body style="text-align:center;background:#0a0a0a;color:white;"><h1>QR Code</h1>
+    <img src="data:image/png;base64,{qr_img}" alt="QR Code"><p>{short_url}</p>
+    <a href="/dashboard">Back</a></body></html>
     """)
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for uptime monitoring"""
     return {"status": "ok"}
 
 @app.delete("/delete/{short_code}")
 async def delete_url(short_code: str, token: str = Cookie(None)):
-    """Delete a short URL"""
     db = get_db()
-    
     user = await get_current_user(token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
     user_id = str(user["_id"])
-    
     url_data = await db.urls.find_one({"short_code": short_code})
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
-    
     if url_data.get("user_id") != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
     await db.urls.delete_one({"short_code": short_code})
-    await db.click_events.delete_many({"short_code": short_code})
-    
     return {"message": "URL deleted successfully"}
 
 # ============ SEO ROUTES ============
 
 @app.get("/robots.txt")
 async def robots():
-    content = """User-agent: *
-Allow: /
-Disallow: /dashboard
-Disallow: /api/
-Disallow: /delete/
-Sitemap: https://linkify-1nnz.onrender.com/sitemap.xml
-"""
-    return Response(content=content, media_type="text/plain")
+    return Response(content="User-agent: *\nAllow: /\nDisallow: /dashboard\nSitemap: https://linkify-1nnz.onrender.com/sitemap.xml", media_type="text/plain")
 
 @app.get("/sitemap.xml")
 async def sitemap():
-    content = """<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>daily</changefreq>
-        <priority>1.0</priority>
-    </url>
-    <url>
-        <loc>https://linkify-1nnz.onrender.com/about</loc>
-        <lastmod>2026-03-25</lastmod>
-        <changefreq>monthly</changefreq>
-        <priority>0.8</priority>
-    </url>
-</urlset>"""
-    return Response(content=content, media_type="application/xml")
+    return Response(content='<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://linkify-1nnz.onrender.com/</loc></url></urlset>', media_type="application/xml")
 
 # ============ REDIRECT ============
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
-    """Redirect short URL to original URL"""
     db = get_db()
-    
     url_data = await db.urls.find_one({"short_code": short_code, "is_active": True})
-    
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
-    
     if url_data.get("expires_at") and url_data["expires_at"] < datetime.utcnow():
         raise HTTPException(status_code=410, detail="This link has expired")
-    
     if url_data.get("password"):
         if not password:
             return HTMLResponse("""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Password Protected - Linkify</title>
-                <style>
-                    body { font-family: Arial, sans-serif; background: #0a0a0a; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-                    .container { background: #111; padding: 2rem; border-radius: 10px; text-align: center; border: 1px solid #333; }
-                    input { padding: 10px; width: 200px; margin: 10px; background: #1a1a1a; border: 1px solid #333; color: white; border-radius: 5px; }
-                    button { padding: 10px 20px; background: #00d2ff; color: black; border: none; border-radius: 5px; cursor: pointer; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h2>🔒 Password Protected Link</h2>
-                    <form method="get">
-                        <input type="password" name="password" placeholder="Enter password" autofocus>
-                        <br>
-                        <button type="submit">Unlock</button>
-                    </form>
-                </div>
-            </body>
-            </html>
+            <!DOCTYPE html><html><head><title>Password Protected</title>
+            <style>body{font-family:Arial;background:#0a0a0a;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;color:white;}</style>
+            </head><body><div style="background:#111;padding:2rem;border-radius:10px;"><h2>🔒 Password Protected</h2>
+            <form method="get"><input type="password" name="password" placeholder="Enter password"><br><button type="submit">Unlock</button></form></div></body></html>
             """)
-        
         if password != url_data["password"]:
             raise HTTPException(status_code=401, detail="Incorrect password")
-    
-    await db.urls.update_one(
-        {"short_code": short_code},
-        {"$inc": {"clicks": 1}}
-    )
-    
+    await db.urls.update_one({"short_code": short_code}, {"$inc": {"clicks": 1}})
     return RedirectResponse(url=url_data["long_url"])

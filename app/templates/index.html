@@ -6,12 +6,7 @@
     <title>Linkify - URL Shortener</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
@@ -21,7 +16,6 @@
             justify-content: center;
             padding: 20px;
         }
-
         .auth-card {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(12px);
@@ -30,134 +24,31 @@
             width: 100%;
             max-width: 450px;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2);
         }
-
-        .logo {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        .logo h1 {
-            font-size: 28px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #fff, #a0a0ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .tab-buttons {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 32px;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 6px;
-            border-radius: 60px;
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            background: transparent;
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            border-radius: 60px;
-            transition: all 0.3s;
-        }
-
-        .tab-btn.active {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        .form-group {
-            margin-bottom: 24px;
-        }
-
-        .form-group label {
-            display: block;
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 14px 16px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            font-size: 15px;
-            color: white;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .btn-primary {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border: none;
-            border-radius: 12px;
-            color: white;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 8px;
-        }
-
-        .error-message {
-            background: rgba(255, 82, 82, 0.2);
-            border-left: 3px solid #ff5252;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            color: #ffaaaa;
-            font-size: 13px;
-            display: none;
-        }
-
-        .success-message {
-            background: rgba(76, 175, 80, 0.2);
-            border-left: 3px solid #4caf50;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            color: #a5ffa5;
-            display: none;
-        }
-
-        .debug-console {
-            margin-top: 20px;
-            padding: 12px;
-            background: rgba(0,0,0,0.5);
-            border-radius: 8px;
-            font-size: 11px;
-            color: #0f0;
-            font-family: monospace;
-            max-height: 150px;
-            overflow-y: auto;
-            display: none;
-        }
-
-        @media (max-width: 480px) {
-            .auth-card {
-                padding: 32px 24px;
-            }
-        }
+        .logo { text-align: center; margin-bottom: 32px; }
+        .logo h1 { font-size: 28px; background: linear-gradient(135deg, #fff, #a0a0ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .logo p { color: rgba(255,255,255,0.6); margin-top: 8px; }
+        .tab-buttons { display: flex; gap: 12px; margin-bottom: 32px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 60px; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: transparent; color: rgba(255,255,255,0.6); font-weight: 600; cursor: pointer; border-radius: 60px; }
+        .tab-btn.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .form-group { margin-bottom: 24px; }
+        .form-group label { display: block; color: rgba(255,255,255,0.8); margin-bottom: 8px; font-size: 14px; }
+        .form-group input { width: 100%; padding: 14px 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; font-size: 15px; }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        .btn-primary { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2); border: none; border-radius: 12px; color: white; font-weight: 600; cursor: pointer; margin-top: 8px; }
+        .error-message { background: rgba(255,82,82,0.2); border-left: 3px solid #ff5252; padding: 12px; border-radius: 8px; margin-bottom: 20px; color: #ffaaaa; display: none; }
+        .success-message { background: rgba(76,175,80,0.2); border-left: 3px solid #4caf50; padding: 12px; border-radius: 8px; margin-bottom: 20px; color: #a5ffa5; display: none; }
+        .feature-list { display: flex; justify-content: center; gap: 24px; margin-top: 32px; flex-wrap: wrap; }
+        .feature-item { text-align: center; color: rgba(255,255,255,0.6); font-size: 12px; }
+        .feature-item span { font-size: 20px; display: block; margin-bottom: 6px; }
+        @media (max-width: 480px) { .auth-card { padding: 32px 24px; } }
     </style>
 </head>
 <body>
     <div class="auth-card">
         <div class="logo">
             <h1>🔗 Linkify</h1>
-            <p style="color: rgba(255,255,255,0.6); margin-top: 8px;">Shorten, Share, Track</p>
+            <p>Shorten, Share, Track</p>
         </div>
 
         <div class="tab-buttons">
@@ -165,7 +56,6 @@
             <button class="tab-btn" id="signupTab">Sign Up</button>
         </div>
 
-        <!-- Login Form -->
         <div id="loginForm">
             <div id="loginError" class="error-message"></div>
             <div class="form-group">
@@ -179,7 +69,6 @@
             <button class="btn-primary" id="loginBtn">Login →</button>
         </div>
 
-        <!-- Signup Form -->
         <div id="signupForm" style="display: none;">
             <div id="signupError" class="error-message"></div>
             <div id="signupSuccess" class="success-message"></div>
@@ -194,21 +83,15 @@
             <button class="btn-primary" id="signupBtn">Create Account →</button>
         </div>
 
-        <!-- Debug Console -->
-        <div id="debugConsole" class="debug-console"></div>
+        <div class="feature-list">
+            <div class="feature-item"><span>✨</span> Custom Codes</div>
+            <div class="feature-item"><span>📱</span> QR Codes</div>
+            <div class="feature-item"><span>🔒</span> Password Protect</div>
+            <div class="feature-item"><span>📊</span> Analytics</div>
+        </div>
     </div>
 
     <script>
-        function debugLog(msg) {
-            const consoleDiv = document.getElementById('debugConsole');
-            consoleDiv.style.display = 'block';
-            const timestamp = new Date().toLocaleTimeString();
-            consoleDiv.innerHTML += `[${timestamp}] ${msg}<br>`;
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
-            console.log(msg);
-        }
-
-        // Tab Switching
         const loginTab = document.getElementById('loginTab');
         const signupTab = document.getElementById('signupTab');
         const loginForm = document.getElementById('loginForm');
@@ -219,128 +102,94 @@
             signupTab.classList.remove('active');
             loginForm.style.display = 'block';
             signupForm.style.display = 'none';
-            debugLog('Switched to Login tab');
         };
-
         signupTab.onclick = () => {
             signupTab.classList.add('active');
             loginTab.classList.remove('active');
             loginForm.style.display = 'none';
             signupForm.style.display = 'block';
-            debugLog('Switched to Signup tab');
         };
 
-        // Login Function
         document.getElementById('loginBtn').onclick = async () => {
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
             const errorDiv = document.getElementById('loginError');
-            
             errorDiv.style.display = 'none';
-            debugLog(`Login attempt with email: ${email}`);
             
             if (!email || !password) {
                 errorDiv.textContent = 'Please fill in all fields';
                 errorDiv.style.display = 'block';
-                debugLog('Login failed: Empty fields');
                 return;
             }
             
             try {
-                debugLog('Sending login request...');
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({email, password})
                 });
                 
-                debugLog(`Response status: ${response.status}`);
-                const data = await response.json();
-                debugLog(`Response data: ${JSON.stringify(data)}`);
-                
                 if (response.ok) {
-                    debugLog('Login successful! Setting cookie and redirecting...');
-                    document.cookie = `token=${data.token}; path=/; max-age=2592000`;
-                    debugLog(`Cookie set. Redirecting to /dashboard`);
                     window.location.href = '/dashboard';
                 } else {
+                    const data = await response.json();
                     errorDiv.textContent = data.detail || 'Invalid email or password';
                     errorDiv.style.display = 'block';
-                    debugLog(`Login failed: ${data.detail}`);
                 }
             } catch(err) {
                 errorDiv.textContent = 'Login failed. Please try again.';
                 errorDiv.style.display = 'block';
-                debugLog(`Login error: ${err.message}`);
             }
         };
 
-        // Signup Function
         document.getElementById('signupBtn').onclick = async () => {
             const email = document.getElementById('signupEmail').value;
             const password = document.getElementById('signupPassword').value;
             const errorDiv = document.getElementById('signupError');
             const successDiv = document.getElementById('signupSuccess');
-            
             errorDiv.style.display = 'none';
             successDiv.style.display = 'none';
-            debugLog(`Signup attempt with email: ${email}`);
             
             if (!email || !password) {
                 errorDiv.textContent = 'Please fill in all fields';
                 errorDiv.style.display = 'block';
-                debugLog('Signup failed: Empty fields');
                 return;
             }
-            
             if (password.length < 6) {
                 errorDiv.textContent = 'Password must be at least 6 characters';
                 errorDiv.style.display = 'block';
-                debugLog('Signup failed: Password too short');
                 return;
             }
             
             try {
-                debugLog('Sending signup request...');
                 const response = await fetch('/api/signup', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({email, password})
                 });
-                
-                debugLog(`Response status: ${response.status}`);
                 const data = await response.json();
-                debugLog(`Response data: ${JSON.stringify(data)}`);
-                
                 if (response.ok) {
-                    successDiv.textContent = 'Account created successfully! Redirecting to login...';
+                    successDiv.textContent = 'Account created! Please login.';
                     successDiv.style.display = 'block';
-                    debugLog('Signup successful! Switching to login tab in 2 seconds');
-                    setTimeout(() => {
-                        loginTab.click();
-                        debugLog('Switched to login tab');
-                    }, 2000);
+                    document.getElementById('signupEmail').value = '';
+                    document.getElementById('signupPassword').value = '';
+                    setTimeout(() => loginTab.click(), 2000);
                 } else {
                     errorDiv.textContent = data.detail || 'Signup failed';
                     errorDiv.style.display = 'block';
-                    debugLog(`Signup failed: ${data.detail}`);
                 }
             } catch(err) {
                 errorDiv.textContent = 'Signup failed. Please try again.';
                 errorDiv.style.display = 'block';
-                debugLog(`Signup error: ${err.message}`);
             }
         };
 
-        // Enter key support
         document.getElementById('loginPassword').onkeypress = (e) => {
             if (e.key === 'Enter') document.getElementById('loginBtn').click();
         };
         document.getElementById('signupPassword').onkeypress = (e) => {
             if (e.key === 'Enter') document.getElementById('signupBtn').click();
         };
-
-        debugLog('Page loaded. Ready for login/signup.');
     </script>
 </body>
 </html>
