@@ -12,7 +12,10 @@ class Settings:
     APP_NAME = "Linkify"
     APP_VERSION = "1.0.0"
     
-    # Base URL - uses environment variable or localhost
+    # Base URL
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+    
+    # Port (for Render)
+    PORT = int(os.getenv("PORT", 8000))
 
 settings = Settings()
