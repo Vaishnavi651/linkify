@@ -15,6 +15,9 @@ app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
+# Base URL for redirects
+BASE_URL = "https://linkify-1nnz.onrender.com"
+
 @app.on_event("startup")
 async def startup_event():
     await connect_to_mongo()
@@ -43,7 +46,7 @@ async def dashboard(request: Request):
         <div class="url-row" id="row-{url['short_code']}">
             <div class="short-url-col">
                 <a href="/{url['short_code']}" target="_blank" class="short-url-link">
-                    {settings.BASE_URL}/{url['short_code']}
+                    {BASE_URL}/{url['short_code']}
                 </a>
                 <div class="url-actions">
                     <a href="{qr_link}" target="_blank" class="action-btn qr-btn">📱 QR Code</a>
@@ -206,7 +209,7 @@ async def create_short_url(url_data: schemas.URLCreate):
     
     return {
         "short_code": short_code,
-        "short_url": f"{settings.BASE_URL}/{short_code}",
+        "short_url": f"{BASE_URL}/{short_code}",
         "long_url": str(url_data.long_url),
         "created_at": url_doc["created_at"],
         "clicks": 0
@@ -233,7 +236,7 @@ async def get_qr_code_page(short_code: str):
     url_data = await db.urls.find_one({"short_code": short_code})
     if not url_data:
         raise HTTPException(status_code=404, detail="URL not found")
-    short_url = f"{settings.BASE_URL}/{short_code}"
+    short_url = f"{BASE_URL}/{short_code}"
     qr_img = generate_qr_code(short_url)
     return HTMLResponse(f"""
     <!DOCTYPE html>
