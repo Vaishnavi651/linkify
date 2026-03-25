@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Form
+from fastapi import FastAPI, Request, HTTPException, Response, Cookie
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -6,6 +6,7 @@ from app import schemas, utils, models
 from app.database import connect_to_mongo, close_mongo_connection, get_db
 from app.config import settings
 from app.qrcode import generate_qr_code
+from app.auth import hash_password, verify_password, generate_session_token
 from datetime import datetime, timedelta
 
 # Create FastAPI app
@@ -17,6 +18,8 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # Set up templates
 templates = Jinja2Templates(directory="app/templates")
 
+# ============ DATABASE CONNECTION ============
+
 @app.on_event("startup")
 async def startup_event():
     await connect_to_mongo()
@@ -24,6 +27,21 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_mongo_connection()
+
+# ============ AUTH FUNCTIONS ============
+
+async def get_current_user(token: str = Cookie(None)):
+    """Get current user from session token"""
+    if not token:
+        return None
+    
+    db = get_db()
+    session = await db.sessions.find_one({"token": token})
+    if not session or session["expires_at"] < datetime.utcnow():
+        return None
+    
+    user = await db.users.find_one({"_id": session["user_id"]})
+    return user
 
 # ============ MAIN PAGES ============
 
@@ -33,11 +51,21 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    """Dashboard page - shows all URLs"""
+async def dashboard(request: Request, token: str = Cookie(None)):
+    """Dashboard page - shows user's URLs"""
     db = get_db()
     
-    urls = await db.urls.find().sort("created_at", -1).to_list(length=100)
+    # Get current user
+    user = await get_current_user(token)
+    
+    # If not logged in, redirect to login
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    user_id = str(user["_id"])
+    
+    # Get user's URLs only
+    urls = await db.urls.find({"user_id": user_id}).sort("created_at", -1).to_list(length=100)
     
     urls_html = ""
     for url in urls:
@@ -118,6 +146,10 @@ async def dashboard(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
+                    <div class="user-info">
+                        <span class="user-email">{user['email']}</span>
+                        <a href="/logout" class="logout-btn">Logout</a>
+                    </div>
                 </div>
             </div>
         </nav>
@@ -213,6 +245,8 @@ async def custom_code_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
                 </div>
             </div>
         </nav>
@@ -341,6 +375,8 @@ async def qr_code_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
                 </div>
             </div>
         </nav>
@@ -460,6 +496,8 @@ async def expiration_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
                 </div>
             </div>
         </nav>
@@ -585,6 +623,8 @@ async def password_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link">About</a>
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
                 </div>
             </div>
         </nav>
@@ -714,6 +754,8 @@ async def about_page(request: Request):
                         </div>
                     </div>
                     <a href="/about" class="nav-link active">About</a>
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/signup" class="nav-link signup-btn">Sign Up Free</a>
                 </div>
             </div>
         </nav>
@@ -765,12 +807,98 @@ async def about_page(request: Request):
     </html>
     """)
 
+# ============ AUTH PAGES ============
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Login page"""
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    """Signup page"""
+    return templates.TemplateResponse("signup.html", {"request": request})
+
+@app.get("/logout")
+async def logout(token: str = Cookie(None)):
+    """Logout user"""
+    if token:
+        db = get_db()
+        await db.sessions.delete_one({"token": token})
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie("token")
+    return response
+
 # ============ API ENDPOINTS ============
 
+@app.post("/api/signup")
+async def signup(user_data: schemas.UserCreate):
+    """Create a new user account"""
+    db = get_db()
+    
+    # Check if user exists
+    existing = await db.users.find_one({"email": user_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password and create user
+    password_hash = hash_password(user_data.password)
+    user = {
+        "email": user_data.email,
+        "password_hash": password_hash,
+        "created_at": datetime.utcnow(),
+        "is_active": True
+    }
+    
+    result = await db.users.insert_one(user)
+    user_id = str(result.inserted_id)
+    
+    # Create session token
+    token = generate_session_token()
+    session = {
+        "user_id": user_id,
+        "token": token,
+        "created_at": datetime.utcnow(),
+        "expires_at": datetime.utcnow() + timedelta(days=30)
+    }
+    await db.sessions.insert_one(session)
+    
+    return {"message": "User created successfully", "token": token}
+
+@app.post("/api/login")
+async def login(user_data: schemas.UserLogin):
+    """Login user"""
+    db = get_db()
+    
+    # Find user
+    user = await db.users.find_one({"email": user_data.email})
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Verify password
+    if not verify_password(user_data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Create session token
+    token = generate_session_token()
+    session = {
+        "user_id": str(user["_id"]),
+        "token": token,
+        "created_at": datetime.utcnow(),
+        "expires_at": datetime.utcnow() + timedelta(days=30)
+    }
+    await db.sessions.insert_one(session)
+    
+    return {"message": "Login successful", "token": token}
+
 @app.post("/shorten")
-async def create_short_url(url_data: schemas.URLCreate):
+async def create_short_url(url_data: schemas.URLCreate, token: str = Cookie(None)):
     """Create a shortened URL with custom code, expiration, password"""
     db = get_db()
+    
+    # Get current user
+    user = await get_current_user(token)
+    user_id = str(user["_id"]) if user else None
     
     # Use custom code if provided
     if url_data.custom_code:
@@ -789,6 +917,7 @@ async def create_short_url(url_data: schemas.URLCreate):
     url_doc = models.url_document(
         short_code, 
         str(url_data.long_url),
+        user_id,
         url_data.custom_code,
         url_data.expires_days,
         url_data.password
@@ -854,17 +983,30 @@ async def get_qr_code_page(short_code: str):
     </html>
     """)
 
-# ============ FIXED HEALTH ENDPOINT - TINY RESPONSE ============
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint for uptime monitoring"""
     return {"status": "ok"}
 
 @app.delete("/delete/{short_code}")
-async def delete_url(short_code: str):
-    """Delete a short URL"""
+async def delete_url(short_code: str, token: str = Cookie(None)):
+    """Delete a short URL (only if owned by user)"""
     db = get_db()
+    
+    # Get current user
+    user = await get_current_user(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_id = str(user["_id"])
+    
+    # Find the URL and verify ownership
+    url_data = await db.urls.find_one({"short_code": short_code})
+    if not url_data:
+        raise HTTPException(status_code=404, detail="URL not found")
+    
+    if url_data.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this URL")
     
     result = await db.urls.delete_one({"short_code": short_code})
     
@@ -874,6 +1016,69 @@ async def delete_url(short_code: str):
     await db.click_events.delete_many({"short_code": short_code})
     
     return {"message": f"URL {short_code} deleted successfully"}
+
+# ============ SEO ROUTES ============
+
+@app.get("/robots.txt")
+async def robots():
+    """Robots.txt for search engines"""
+    content = """User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /login
+Disallow: /signup
+Disallow: /delete/
+Disallow: /api/
+
+Sitemap: https://linkify-1nnz.onrender.com/sitemap.xml
+"""
+    return Response(content=content, media_type="text/plain")
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    """Sitemap for search engines"""
+    content = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>daily</changefreq>
+        <priority>1.0</priority>
+    </url>
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/about</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.8</priority>
+    </url>
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/feature/custom-code</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/feature/qr-code</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/feature/expiration</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>https://linkify-1nnz.onrender.com/feature/password</loc>
+        <lastmod>2026-03-25</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+</urlset>"""
+    return Response(content=content, media_type="application/xml")
+
+# ============ REDIRECT ENDPOINT ============
 
 @app.get("/{short_code}")
 async def redirect_to_url(short_code: str, request: Request, password: str = None):
