@@ -20,7 +20,7 @@ class URLResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# User schemas - IMPORTANT: These must be here
+# User schemas
 class UserCreate(BaseModel):
     email: EmailStr
     password: str

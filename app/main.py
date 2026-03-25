@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Response, Cookie, Form
+from fastapi import FastAPI, Request, HTTPException, Response, Cookie
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -444,12 +444,17 @@ async def login(user_data: schemas.UserLogin):
     
     user = await db.users.find_one({"email": user_data.email})
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    if not verify_password(user_data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Verify password
+    is_valid = verify_password(user_data.password, user["password_hash"])
+    if not is_valid:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
     
+    # Generate session token
     token = generate_session_token()
+    
+    # Store session
     session = {
         "user_id": str(user["_id"]),
         "token": token,
@@ -458,7 +463,14 @@ async def login(user_data: schemas.UserLogin):
     }
     await db.sessions.insert_one(session)
     
-    return {"message": "Login successful", "token": token}
+    return {
+        "message": "Login successful", 
+        "token": token,
+        "user": {
+            "email": user["email"],
+            "id": str(user["_id"])
+        }
+    }
 
 @app.get("/logout")
 async def logout(token: str = Cookie(None)):
