@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, Form
+from fastapi import FastAPI, Request, HTTPException, Form, Response
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -854,10 +854,11 @@ async def get_qr_code_page(short_code: str):
     </html>
     """)
 
+# ============ FIXED HEALTH ENDPOINT - Returns minimal plain text ============
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for uptime monitoring"""
-    return {"status": "alive", "service": "Linkify"}
+    """Health check endpoint for uptime monitoring - returns minimal data"""
+    return Response(content="ok", media_type="text/plain")
 
 @app.delete("/delete/{short_code}")
 async def delete_url(short_code: str):
